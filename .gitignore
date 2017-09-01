@@ -1,3 +1,6 @@
+*.pdf
+*.sublime-workspace
+*.sublime-project
 
 # Created by https://www.gitignore.io/api/latex
 

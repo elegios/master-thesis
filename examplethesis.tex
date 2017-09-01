@@ -55,9 +55,9 @@
 
 We use the \emph{biblatex} package to handle our references.  We therefore use the
 command \texttt{parencite} to get a reference in parenthesis, like this
-\parencite{heisenberg2015}.  It is also possible to include the author
+\parencite{Erdweg2013}.  It is also possible to include the author
 as part of the sentence using \texttt{textcite}, like talking about
-the work of \textcite{einstein2016}.
+the work of \textcite{Erdweg2013}.
 
 \Blindtext
 
@@ -68,6 +68,34 @@ the work of \textcite{einstein2016}.
 \chapter{Methods}
 
 \blindtext
+
+\chapter{Related Work}
+
+The following section currently contains short, basic descriptions of the capabilities of some various systems/methods. Most of it is orientational, no real deep study of any of them has been done. The descriptions are also poor.
+
+\section{SDF}
+
+\textcite{Heering1989} introduce the syntax definition formalism SDF, a method for declaratively defining syntax, including lexical syntax, context free syntax, and various disambiguation methods.
+
+\section{Layout-sensitive SDF}
+
+\textcite{Erdweg2013} extend SDF to handle layout-sensitive grammars in a declarative manner through annotations in each production restricting their relative positions. To achieve this they determine a limited subset of possible layout restrictions that are sufficient to describe the rules of most layout-sensitive languages.
+
+\section{$\lambda_m$}
+
+\textcite{Herman2010} introduce $\lambda_m$, a lambda calculus with macro expansion and types that ensure the hygiene of said macros. The types consist of the exporting and importing of names from and to forms, using the tree structure present in s-expressions. The types can be used to reason about bindings in a program before macro expansion.
+
+\section{Romeo}
+
+\textcite{Stansifer2014} introduce Romeo, a language extending $\lambda_m$ by providing full syntax manipulation capabilities while still retaining hygiene. $\lambda_m$ is limited to pattern matching and replacing, while Romeo can manipulate terms as data.
+
+\section{Copper and Silver}
+
+Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. It uses a modified LR parsing algorithm. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver \cite{VanWyk2010} uses attribute grammars to specify modular language extensions on some host language, along with guarantees on some of their behaviour under composition \cite{Kaminski2017}. Silver uses Copper for grammar specification.
+
+\section{SoundX}
+
+\textcite{Lorenzen2016} introduce SoundX, a system for specifying syntax and type rules for a base language, and then language extensions through rewritings (macros). Each rewriting also has specified type rules, detailing what is required for a successful type derivation. Through these it can be statically checked that assuming there is a derivation of the original code, then there will be a derivation in the base language of the rewriting, i.e. it can be statically checked that the rewriting is correct as written, and each use can be checked for correctness without actually performing the rewriting. SDF is used for the syntactic specification of languages and language extensions.
 
 \printbibliography[heading=bibintoc] % Print the bibliography (and make it appear in the table of contents)
 
