@@ -1,0 +1,143 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+% \usepackage[swedish]{babel}
+\usepackage[bottom=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+% \usepackage{framed}
+\usepackage[unicode=true]{hyperref}
+
+\usepackage{pgfgantt}
+
+\usepackage{csquotes}
+\usepackage{biblatex}
+\addbibresource{../references.bib}
+
+\usepackage{parskip}
+
+\usepackage{fancyhdr}
+
+\usepackage{color}
+\usepackage{fancyvrb}
+\DefineShortVerb[commandchars=\\\{\}]{\|}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\newenvironment{Shaded}{}{}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{{#1}}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.56,0.13,0.00}{{#1}}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{{#1}}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{{#1}}}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{{#1}}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{{#1}}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{{#1}}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textit{{#1}}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{{#1}}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{{#1}}}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.02,0.16,0.49}{{#1}}}
+\newcommand{\RegionMarkerTok}[1]{{#1}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{{#1}}}}
+\newcommand{\NormalTok}[1]{{#1}}
+
+\pagestyle{fancy}
+
+\lhead{Viktor Palmkvist}
+\chead{vipa@kth.se}
+\rhead{DA222X}
+
+% \lfoot{}
+% \cfoot{}
+% \rfoot{}
+
+\title{{\normalsize \it Specification for}\\Compositional Language Design}
+\author{{\normalsize \it Student}\\Viktor Palmkvist\\\texttt{vipa@kth.se}
+\and {\normalsize \it Supervisor}\\David Broman\\\texttt{dbro@kth.se}
+\and {\normalsize \it Examiner}\\Mads Dam\\\texttt{mfd@csc.kth.se}}
+
+\begin{document}
+\raggedright
+
+\maketitle
+
+\section{Research Area and Objective}
+
+\subsection{Research Area}
+
+The implementation of a programming language --- be it an interpreter or a compiler --- tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
+
+Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{plt-tr1,Hickey2008,Matsakis2014}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally. However, if a macro is improperly used or poorly implemented any error produced will generally refer to the fully expanded program, rather than the program as it was written. The macro abstraction is thus leaky, and its usability suffers from it.
+
+Additionally, most macro systems are constrained by the syntax of the base language; no new syntax can be introduced. This can for example be seen in Lisp and its descendants, such as Scheme, Racket, and Clojure.
+
+\subsection{Objective}
+
+This project aims to explore macro systems without these two limitations, where the macros can be seen as true parts of a language even in terms of errors, and where they can introduce new syntax, allowing them to define entire languages. Much work has been done on each of these two things separately, but their intersection is less explored.
+
+There is some exploration however, but it tends to treat languages as the base unit of composition, i.e., languages are made up of languages, as opposed to the individual constructions. This project will instead consider the constructions as the base unit of composition, e.g., allowing a new language to cherrypick constructions from previous languages, instead of having to build on full languages.
+
+\section{Research Question}
+
+\subsection{Question}
+Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
+
+\subsection{Challenges}
+\begin{itemize}
+\item Disambiguation. Most methods of disambiguating grammars require considering the grammar as a whole, rewriting it in ways that are non-obvious without prior experience in the area. The former conflicts with considering each language construction in isolation, the latter with ease of use.
+
+\item Name resolution and binding constructions. It must be possible to specify these without extra effort in such a way that messages in case of errors are good. In particular, it should be possible to specify various forms of scoping, e.g., in some languages functions can be used before their declaration, while other languages require them to already be declared.
+
+\item Can languages nest, i.e., can one language be used inside another? For example, could we write some SQL in our code and expect the code to parse correctly and mean what we intend?
+\end{itemize}
+
+\subsection{Relevance}
+This degree project is part of a larger project in the MCS research group with the intent of easing the construction of domain-specific languages. The intent is to supply a large part of the method by which such languages are defined through the work done as part of the degree project.
+
+Additionally, I will continue working on this through my PhD, which starts when the degree project concludes, guaranteeing that it will be expanded upon and of use to further research.
+
+\subsection{Delimitations}
+This work should ideally preserve abstractions on the type level as well, i.e., any type errors should be reported in terms of the original code, not the internals of the language construct used. This project will not address this, but will instead leave it as continued work for my PhD.
+
+Additionally, the project will only consider definitions of layout-insensitive languages (i.e., not Python and similar languages).
+
+\section{Method and Evaluation}
+
+A system will be designed and constructed for defining languages in terms of their constructions. The expressiveness of the system will be evaluated by using it to define several non-trivial languages, most likely interesting subsets of pre-existing languages.
+
+\section{Initial Literature Study}
+
+The literature study will focus on two areas: parsing algorithms, and hygiene in the context of macro rewriting. Some initial references include:
+\begin{itemize}
+\item $\lambda_m$ \cite{Herman2010} presents a lambda calculus with macro rewriting, where macros have types that describe their binding structure. Name resolution errors can thus be reported in terms of the original code, and each macro implementation can be checked against the type of the macro to ensure its correctness.
+
+\item Romeo \cite{Stansifer2014} uses a similar type system to $\lambda_m$, but allows for manipulation of syntax as data while still retaining hygiene.
+
+\item SoundX \cite{Lorenzen2016} implements rewriting on type derivations, preserving type correctness. It also allows defining new syntax, but the unit of composition is a language in its entirety.
+
+\item SDF \cite{Heering1989} allows definition of syntax in a declarative, somewhat modular way, and is the basis for syntax definition in SoundX above.
+
+\item \textcite{Silkensen2013} show an efficient way to parse languages composed of several DSLs. The unit of composition is, naturally, a language.
+
+\item \textcite{Stansifer2011} extend the Earley parsing algorithm to allow modifications to a grammar during parsing, allowing for macros to be defined or imported potentially anywhere in a source file.
+\end{itemize}
+
+\section{Schedule}
+
+The project will roughly follow the structure outlined in \cite{Broman2015}. The schedule below is based on a conservative guess on presentation dates at CSC and is likely to be extended past the new year when they are available.
+
+\begin{ganttchart}[hgrid, vgrid, y unit chart=.7cm]{1}{17}
+\gantttitlelist{36,...,52}{1} \\
+\ganttgroup{Formulate}{2}{5} \\
+\ganttmilestone{Proposal Seminar}{5} \\
+\ganttmilestone{Thesis: Introduction \& Background}{5} \\
+\ganttgroup{Design \& Construct}{6}{11} \\
+\ganttmilestone{Midterm Seminar}{11} \\
+\ganttmilestone{Thesis: Formalization \& Technical Description}{11} \\
+\ganttgroup{Evaluate \& Finalize}{12}{16} \\
+\ganttmilestone{Internal Presentation}{16} \\
+\ganttmilestone{Thesis: Results \& Evaluation}{16}
+\end{ganttchart}
+
+\newpage
+\printbibliography
+
+\end{document}
