@@ -83,7 +83,15 @@ The following section currently contains short, basic descriptions of the capabi
 
 \section{$\lambda_m$}
 
-\textcite{Herman2010} introduce $\lambda_m$, a lambda calculus with macro expansion and types that ensure the hygiene of said macros. The types consist of the exporting and importing of names from and to forms, using the tree structure present in s-expressions. The types can be used to reason about bindings in a program before macro expansion.
+$\lambda_m$ \cite{Herman2010} is an extension of lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this project in regard to hygiene and name binding.
+
+Some notable differences exist however:
+\begin{itemize}
+  \item $\lambda_m$ macros can only affect bindings within themselves, a natural consequence of lambda calculus lacking constructions where bindings are not nested, e.g., a local variable in C can be used for the remainder of the scope, not only in some sub-expression, which is the case for a let-expression. This project handles such binding structures, which imposes some additional restrictions on what the implementation of a macro can do.
+  \item The macro type signatures in this project are never fully explicit, they appear spread out through each macro definition amongst other aspects of the definition. $\lambda_m$ in contrast uses a complete type signature for each macro.
+\end{itemize}
+
+$\lambda_m$ also introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and also place focus on allowing reasoning about unexpanded programs.
 
 \section{Romeo}
 
@@ -96,6 +104,8 @@ Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in t
 \section{SoundX}
 
 \textcite{Lorenzen2016} introduce SoundX, a system for specifying syntax and type rules for a base language, and then language extensions through rewritings (macros). Each rewriting also has specified type rules, detailing what is required for a successful type derivation. Through these it can be statically checked that assuming there is a derivation of the original code, then there will be a derivation in the base language of the rewriting, i.e. it can be statically checked that the rewriting is correct as written, and each use can be checked for correctness without actually performing the rewriting. SDF is used for the syntactic specification of languages and language extensions.
+
+SoundX can technically fail during rewriting. Rewriting is done on derivation trees, and the same construct may appear in multiple premises. If those appearances rewrite into different, incompatible, desugarings the process will fail.
 
 \printbibliography[heading=bibintoc] % Print the bibliography (and make it appear in the table of contents)
 
