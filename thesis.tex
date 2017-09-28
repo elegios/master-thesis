@@ -53,25 +53,27 @@
 
 \chapter{Introduction}
 
-We use the \emph{biblatex} package to handle our references.  We therefore use the
-command \texttt{parencite} to get a reference in parenthesis, like this
-\parencite{Erdweg2013}.  It is also possible to include the author
-as part of the sentence using \texttt{textcite}, like talking about
-the work of \textcite{Erdweg2013}.
+The implementation of a programming language --- be it an interpreter or a compiler --- tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
 
-\Blindtext
+Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{plt-tr1,Hickey2008,Matsakis2014}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally. However, if a macro is improperly used or poorly implemented any error produced will generally refer to the fully expanded program, rather than the program as it was written. The macro abstraction is thus leaky, and its usability suffers from it.
+
+Additionally, most macro systems are constrained by the syntax of the base language; no new syntax can be introduced. This can for example be seen in Lisp and its descendants, such as Scheme, Racket, and Clojure.
+
+\section{Objective}
+
+This project explores a macro system without these two limitations, where the macros can be seen as true parts of a language even in terms of errors, and where they can introduce new syntax, allowing them to define entire languages. Much work has been done on each of these two things separately, but their intersection is less explored.
+
+There is some exploration however, but it tends to treat languages as the base unit of composition, i.e., languages are made up of languages, as opposed to the individual constructions. This project instead considers the constructions as the base unit of composition, e.g., allowing a new language to cherrypick constructions from previous languages, instead of having to build on full languages.
 
 \section{Research Question}
 
-\blindtext
+Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
 
 \chapter{Methods}
 
-\blindtext
-
 \chapter{Related Work}
 
-The following section currently contains short, basic descriptions of the capabilities of some various systems/methods. Most of it is orientational, no real deep study of any of them has been done. The descriptions are also poor.
+This section describes various related work, either solving the same problem with a different method, or solving some sub-problem. Most of the description is oriented around the capabilities of the various methods, with extra detail depending on the methods similarity to this thesis.
 
 \section{SDF}
 
