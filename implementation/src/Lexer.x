@@ -1,6 +1,7 @@
 {
 module Lexer
 ( tokenize
+, Token(..)
 , Position(..)
 , Range(..)
 ) where
@@ -15,25 +16,30 @@ import qualified Data.Bits
 
 $digit = [0-9]
 $alpha = [a-zA-Z]
-$single_symbol = [\;\,\{\}\(\)\[\]]
-$other_symbol = [\.\*\+\?\#\~\-\$\|\^\/\<\>]
+$single_symbol = [\;\,\{\}\(\)\[\]:]
+$other_symbol = [\.\*\+\?\#\~\-\$\|\^\/\<\>=]
 
 tokens :-
   $white+                              ;
   "//".*                               ;
-  [$alpha \_] [$alpha $digit \_ \']*   { Identifier }
-  $digit+                              { \r s -> Integer r (read s) }
-  $digit+ \. $digit+                   { \r s -> Float r (read s) }
-  $single_symbol                       { Symbol }
-  $other_symbol+                       { Symbol }
+  [$alpha \_] [$alpha $digit \_ \']*   { IdentifierTok }
+  $digit+                              { \r s -> IntegerTok r (read s) }
+  $digit+ \. $digit+                   { \r s -> FloatTok r (read s) }
+  $single_symbol                       { SymbolTok }
+  $other_symbol+                       { SymbolTok }
+  [\"] [^\"]* [\"]                     { \r s -> StringTok r (processString s)}
 
 {
 
-data Token = Identifier Range String
-           | Integer Range Int
-           | Float Range Double
-           | Symbol Range String
+data Token = IdentifierTok Range String
+           | IntegerTok Range Int
+           | FloatTok Range Double
+           | SymbolTok Range String
+           | StringTok Range String
            deriving (Show, Eq)
+
+processString :: String -> String
+processString = init . tail
 
 tokenize = alexScanTokens
 
