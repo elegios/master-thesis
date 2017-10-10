@@ -2,17 +2,18 @@
 
 \usepackage{blindtext} % This is just to get some nonsense text in this template, can be safely removed
 
+\usepackage{minted}
+
 \usepackage{csquotes} % Recommended by biblatex
 \usepackage{biblatex}
 \addbibresource{references.bib} % The file containing our references, in BibTeX format
 
-
-\title{This is the English title}
+\title{Compositional Programming Language Design}
 \alttitle{Detta är den svenska översättningen av titeln}
-\author{Osquar Student}
-\email{osquar@kth.se}
-\supervisor{Lotta Larsson}
-\examiner{Lennart Bladgren}
+\author{Viktor Palmkvist}
+\email{vipa@kth.se}
+\supervisor{David Broman}
+\examiner{Mads Dam}
 \programme{Master in Computer Science}
 \school{School of Computer Science and Communication}
 \date{\today}
@@ -26,21 +27,14 @@
 \titlepage
 
 \begin{abstract}
-  English abstract goes here.
-
-  \blindtext
+TBW
 \end{abstract}
 
 
 \begin{otherlanguage}{swedish}
-  \begin{abstract}
-    Träutensilierna i ett tryckeri äro ingalunda en oviktig faktor,
-    för trevnadens, ordningens och ekonomiens upprätthållande, och
-    dock är det icke sällan som sorgliga erfarenheter göras på grund
-    af det oförstånd med hvilket kaster, formbräden och regaler
-    tillverkas och försäljas Kaster som äro dåligt hopkomna och af
-    otillräckligt.
-  \end{abstract}
+\begin{abstract}
+Kommer så småningom
+\end{abstract}
 \end{otherlanguage}
 
 
@@ -69,6 +63,43 @@ There is some exploration however, but it tends to treat languages as the base u
 
 Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
 
+\section{Introduction to the Method}
+
+The approach taken centers around two concepts, syntax types, roughly equivalent to a non-terminal in a grammar, and syntax constructions, roughly equivalent to a production. Each syntax construction has a syntax type, describing where it may be used. A language then is a set of syntax constructions. For example, the code below describes a small language with addition, multiplication and integer literals, where associativity and precedence are used for disambiguation.
+
+\begin{minted}{text}
+syntax Plus:Expression = e1:Expression "+" e2:Expression {
+  #assoc left
+  #prec 11
+  MCore.Plus e1 e2
+}
+
+syntax Times:Expression = e1:Expression "*" e2:Expression {
+  #assoc left
+  #prec 12
+  MCore.Times e1 e2
+}
+
+syntax IntLit:Expression = val:Integer {
+  val
+}
+\end{minted}
+
+Scoping and bindings are also fully specified for each construction, and the implementation is checked to not introduce any name errors. In the example below \mintinline{text}{Let} is a standard let expression, while \mintinline{text}{Define} demonstrates non-nested bindings, similar to local variables in C, Java, and similar languages.
+
+\begin{minted}{text}
+syntax Let:Expression =
+  "let" x:Identifier "=" e:Expression "in" body:Expression {
+  #scoping x->body
+  (x -> body) e
+}
+
+syntax Define:Expression = "def" x:Identifier "=" e:Expression {
+  #scoping x->parent_down
+  MCore.Def(x, e)
+}
+\end{minted}
+
 \chapter{Methods}
 
 \chapter{Related Work}
@@ -77,7 +108,9 @@ This section describes various related work, either solving the same problem wit
 
 \section{SDF}
 
-\textcite{Heering1989} introduce the syntax definition formalism SDF, a method for declaratively defining syntax, including lexical syntax, context free syntax, and various disambiguation methods.
+The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually and may be spread across several files in a very similar fashion to the syntax constructions of this project. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
+
+A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
 
 \section{Layout-sensitive SDF}
 
@@ -109,7 +142,13 @@ Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in t
 
 SoundX can technically fail during rewriting. Rewriting is done on derivation trees, and the same construct may appear in multiple premises. If those appearances rewrite into different, incompatible, desugarings the process will fail.
 
-\printbibliography[heading=bibintoc] % Print the bibliography (and make it appear in the table of contents)
+\section{Sets of Scopes}
+
+The latest iteration of Racket's \cite{plt-tr1} macro expander achieves binding hygiene by using sets of scopes \cite{Flatt:2016:BSS:2837614.2837620}. The previous iteration used a renaming approach, where references were automatially renamed to prevent accidental capture, but the workings and implementation of the method were difficult to follow. In the new method, each binding construction introduces a scope, which is attached to everything in the body. Thus each reference has an attached set of scopes. To find the binding of a particular reference, find bindings whose respective sets are subsets of the reference's set. If there are multiple, pick the one that is a superset of the others. If no such identifier exists, the reference is ambiguous.
+
+To minimize the number of ambiguous cases, each macro definition and macro use attaches a new scope. Even with these two extra scopes ambiguous references are still possible, but according to \textcite{Flatt:2016:BSS:2837614.2837620} they do not appear in practice.
+
+\printbibliography[heading=bibintoc]
 
 \appendix
 
