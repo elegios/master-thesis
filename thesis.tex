@@ -47,111 +47,174 @@ Kommer så småningom
 
 \chapter{Introduction}
 
-The implementation of a programming language --- be it an interpreter or a compiler --- tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
+The implementation of a programming language---be it an interpreter or a compiler---tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
 
-Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{plt-tr1,Hickey2008,Matsakis2014}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally. However, if a macro is improperly used or poorly implemented any error produced will generally refer to the fully expanded program, rather than the program as it was written. The macro abstraction is thus leaky, and its usability suffers from it.
+Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{plt-tr1,Hickey2008,Matsakis2014}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally.
 
-Additionally, most macro systems are constrained by the syntax of the base language; no new syntax can be introduced. This can for example be seen in Lisp and its descendants, such as Scheme, Racket, and Clojure.
+When looking at macros in languages that are commonly used today a few problems remain however. This thesis will focus on two broad categories of such problems: abstraction (see section \ref{sec:problem-abstraction}) and syntax (see section \ref{sec:problem-syntax}). These problems have been solved separately (see sections \ref{sec:abstraction-solutions} and \ref{sec:syntax-solutions}) as well as in conjunction (see section \ref{sec:full-solutions}). This thesis falls into the second camp and largely addresses both problems, with a new set of trade-offs and a different unit of composition. See section \ref{sec:solution-overview} for an overview and section \ref{sec:thesis-solution} for more details.
 
-\section{Objective}
+\section{Problems of Abstraction} \label{sec:problem-abstraction}
 
-This project explores a macro system without these two limitations, where the macros can be seen as true parts of a language even in terms of errors, and where they can introduce new syntax, allowing them to define entire languages. Much work has been done on each of these two things separately, but their intersection is less explored.
+The abstractions provided by macros can easily become leaky abstractions without special care.
 
-There is some exploration however, but it tends to treat languages as the base unit of composition, i.e., languages are made up of languages, as opposed to the individual constructions. This project instead considers the constructions as the base unit of composition, e.g., allowing a new language to cherrypick constructions from previous languages, instead of having to build on full languages.
+\subsection{Name Capture}
 
-\section{Research Question}
+A naive macro expander using textual replacement will introduce accidental name capture. For example, given the following macro (using Racket \cite{plt-tr1} syntax) intended to calculate $2a + b$ while computing $a$ only once:
 
-Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
-
-\section{Introduction to the Method}
-
-The approach taken centers around two concepts, syntax types, roughly equivalent to a non-terminal in a grammar, and syntax constructions, roughly equivalent to a production. Each syntax construction has a syntax type, describing where it may be used. A language then is a set of syntax constructions. For example, the code below describes a small language with addition, multiplication and integer literals, where associativity and precedence are used for disambiguation.
-
-\begin{minted}{text}
-syntax Plus:Expression = e1:Expression "+" e2:Expression {
-  #assoc left
-  #prec 11
-  MCore.Plus e1 e2
-}
-
-syntax Times:Expression = e1:Expression "*" e2:Expression {
-  #assoc left
-  #prec 12
-  MCore.Times e1 e2
-}
-
-syntax IntLit:Expression = val:Integer {
-  val
-}
+\begin{minted}{racket}
+(define-syntax-rule (double-add a b)
+  (let ([x a])
+    (+ x x b)))
 \end{minted}
 
-Scoping and bindings are also fully specified for each construction, and the implementation is checked to not introduce any name errors. In the example below \mintinline{text}{Let} is a standard let expression, while \mintinline{text}{Define} demonstrates non-nested bindings, similar to local variables in C, Java, and similar languages.
+The following expression will exhibit accidental name capture when macro expansion uses pure textual replacement:
 
-\begin{minted}{text}
-syntax Let:Expression =
-  "let" x:Identifier "=" e:Expression "in" body:Expression {
-  #scoping x->body
-  (x -> body) e
-}
-
-syntax Define:Expression = "def" x:Identifier "=" e:Expression {
-  #scoping x->parent_down
-  MCore.Def(x, e)
-}
+\begin{minted}{racket}
+(let ([x 2])
+  (double-add 1 x))
+; expands to:
+(let ([x 2])
+  (let ([x 1])
+    (double-add x x x)))
+; which evaluates to
+3
+; while our intended semantics would evaluate to:
+4
 \end{minted}
 
-\chapter{Methods}
+Notable here is that the above would not produce an error of any kind, the result would simply be silently wrong.
+
+Most macro systems will avoid this problem through various forms of rewriting or more complicated forms of name resolution (e.g. \cite{Flatt:2016:BSS:2837614.2837620} TODO: references), a notable exception being the C preprocessor that makes no such attempt.
+
+\subsection{Errors after Expansion}
+
+In some cases the fully expanded code is incorrect, either because the macro was poorly implemented, or because it was used improperly. For example:
+
+\begin{minted}{racket}
+(define-syntax-rule (new-let x e body)
+  (let ([x e])
+    body))
+
+(new-let 2 x
+  (+ 1 x))
+\end{minted}
+
+Here we define a new binding construction, but misuse it; the identifier and the value are switched. The macro expansion will succeed and produce the code below, but at that point an error message will be produced about improper use of \mintinline{racket}{let}, even though \mintinline{racket}{let} never occurs in the original code.
+
+\begin{minted}{racket}
+(let ([2 x])
+  (+ 1 x))
+\end{minted}
+
+The error exposes the implementation of the macro. The generated code may be introduced through several layers of macro expansion and can be quite complicated, making the connection between the error message and the actual error even less clear.
+
+In a statically typed language this problem has an additional form: type errors after macro expansion.
+
+\section{Problems of Syntax} \label{sec:problem-syntax}
+
+One advantage of macros is their ability to essentially introduce syntactic sugar to a language at a user level. Despite this most commonly used macro systems place some fairly strict limits on the newly introduced syntax. For example, a C preprocessor macro must be an identifier, possibly followed by an argument list, and a lisp macro must be a list of valid forms started by a symbol.
+
+Such restrictions simplify parsing the language, since it ensures the grammar is fixed and cannot be changed during parsing.
+
+\section{Contributions}
+
+This thesis contributes the following:
+
+\begin{itemize}
+  \item A method of specifying the syntax, binding semantics and implementation of a language construction (macro) in a singular location (sections \ref{sec:design-syntax}, \ref{sec:design-bindings} and \ref{sec:design-implementation}).
+  \item Proof that macro expansion using the above method terminates, given a finite input (section \ref{sec:proof-termination}).
+  \item Proof that macro expansion does not introduce any binding errors (alternatively preservation of $\alpha$-equivalence) (section \ref{sec:proof-no-errors}).
+  \item An implementation of a non-trivial subset of JavaScript/Lua (section \ref{sec:imperative-eval}) to evaluate the method's suitability in modeling a typical imperative language.
+  \item An implementation of a non-trivial subset of OCaml (section \ref{sec:functional-eval}) to evaluate the method's suitability in modeling a typical functional language, including pattern matching.
+\end{itemize}
+
+\chapter{Design}
+
+\section{Design Goals}
+
+\section{Syntax} \label{sec:design-syntax}
+
+\section{Bindings} \label{sec:design-bindings}
+
+\section{Implementation} \label{sec:design-implementation}
+
+\section{Proof of Termination} \label{sec:proof-termination}
+
+\section{Proof of Soundness} \label{sec:proof-no-errors}
+
+\chapter{Evaluation}
+
+\section{An Imperative Language} \label{sec:imperative-eval}
+
+\section{A Functional Language} \label{sec:functional-eval}
 
 \chapter{Related Work}
 
-This section describes various related work, either solving the same problem with a different method, or solving some sub-problem. Most of the description is oriented around the capabilities of the various methods, with extra detail depending on the methods similarity to this thesis.
+\section{Abstraction Solutions} \label{sec:abstraction-solutions}
 
-\section{SDF}
-
-The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually and may be spread across several files in a very similar fashion to the syntax constructions of this project. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
-
-A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
-
-\section{Layout-sensitive SDF}
-
-\textcite{Erdweg2013} extend SDF to handle layout-sensitive grammars in a declarative manner through annotations in each production restricting their relative positions. To achieve this they determine a limited subset of possible layout restrictions that are sufficient to describe the rules of most layout-sensitive languages.
-
-\section{$\lambda_m$}
-
-$\lambda_m$ \cite{Herman2010} is an extension of lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this project in regard to hygiene and name binding.
-
-Some notable differences exist however:
-\begin{itemize}
-  \item $\lambda_m$ macros can only affect bindings within themselves, a natural consequence of lambda calculus lacking constructions where bindings are not nested, e.g., a local variable in C can be used for the remainder of the scope, not only in some sub-expression, which is the case for a let-expression. This project handles such binding structures, which imposes some additional restrictions on what the implementation of a macro can do.
-  \item The macro type signatures in this project are never fully explicit, they appear spread out through each macro definition amongst other aspects of the definition. $\lambda_m$ in contrast uses a complete type signature for each macro.
-\end{itemize}
-
-$\lambda_m$ also introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and also place focus on allowing reasoning about unexpanded programs.
-
-\section{Romeo}
-
-\textcite{Stansifer2014} introduce Romeo, a language extending $\lambda_m$ by providing full syntax manipulation capabilities while still retaining hygiene. $\lambda_m$ is limited to pattern matching and replacing, while Romeo can manipulate terms as data.
-
-\section{Copper and Silver}
-
-Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. It uses a modified LR parsing algorithm. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver \cite{VanWyk2010} uses attribute grammars to specify modular language extensions on some host language, along with guarantees on some of their behaviour under composition \cite{Kaminski2017}. Silver uses Copper for grammar specification.
-
-\section{SoundX}
-
-\textcite{Lorenzen2016} introduce SoundX, a system for specifying syntax and type rules for a base language, and then language extensions through rewritings (macros). Each rewriting also has specified type rules, detailing what is required for a successful type derivation. Through these it can be statically checked that assuming there is a derivation of the original code, then there will be a derivation in the base language of the rewriting, i.e. it can be statically checked that the rewriting is correct as written, and each use can be checked for correctness without actually performing the rewriting. SDF is used for the syntactic specification of languages and language extensions.
-
-SoundX can technically fail during rewriting. Rewriting is done on derivation trees, and the same construct may appear in multiple premises. If those appearances rewrite into different, incompatible, desugarings the process will fail.
-
-\section{Sets of Scopes}
+\subsection{Sets of Scopes}
 
 The latest iteration of Racket's \cite{plt-tr1} macro expander achieves binding hygiene by using sets of scopes \cite{Flatt:2016:BSS:2837614.2837620}. The previous iteration used a renaming approach, where references were automatially renamed to prevent accidental capture, but the workings and implementation of the method were difficult to follow. In the new method, each binding construction introduces a scope, which is attached to everything in the body. Thus each reference has an attached set of scopes. To find the binding of a particular reference, find bindings whose respective sets are subsets of the reference's set. If there are multiple, pick the one that is a superset of the others. If no such identifier exists, the reference is ambiguous.
 
 To minimize the number of ambiguous cases, each macro definition and macro use attaches a new scope. Even with these two extra scopes ambiguous references are still possible, but according to \textcite{Flatt:2016:BSS:2837614.2837620} they do not appear in practice.
 
+\subsection{$\lambda_m$}
+
+$\lambda_m$ \cite{Herman2010} is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
+
+Some notable differences exist however:
+\begin{itemize}
+  \item Bindings in $\lambda_m$ macros are always nested, in the sense that bindings are never available outside of the macro that introduced them. In contrast, consider a local variable in e.g. C:
+  \begin{minted}{c}
+  int foo = 4;
+  printf("foo: %d\n", foo);
+  \end{minted}
+  The local variable \mintinline{c}{foo} is available for the remainder of the scope, potentially long after the declaration has ended. This thesis handles both kinds of binding.
+  \item The macro type signatures in this thesis are never fully explicit, they appear spread out through each macro definition amongst other aspects of the definition. $\lambda_m$ in contrast uses a complete type signature for each macro.
+\end{itemize}
+
+$\lambda_m$ also introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and also place focus on allowing reasoning about unexpanded programs.
+
+\subsection{Romeo}
+
+\textcite{Stansifer2014} introduce Romeo, a language extending $\lambda_m$ by providing full syntax manipulation capabilities while still retaining hygiene. $\lambda_m$ is limited to pattern matching and replacing, while Romeo can manipulate terms as data.
+
+\section{Syntax Solutions} \label{sec:syntax-solutions}
+
+\subsection{SDF}
+
+The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually and may be spread across several files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
+
+A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
+
+\subsection{Layout-sensitive SDF}
+
+\textcite{Erdweg2013} extend SDF to handle layout-sensitive grammars in a declarative manner through annotations in each production restricting their relative positions. To achieve this they determine a limited subset of possible layout restrictions that are sufficient to describe the rules of most layout-sensitive languages.
+
+\section{Combined Solutions} \label{sec:full-solutions}
+
+\subsection{SoundX}
+
+\textcite{Lorenzen2016} introduce SoundX, a system for specifying syntax and type rules for a base language, and then language extensions through rewritings (macros). Each rewriting also has specified type rules, detailing what is required for a successful type derivation. Through these it can be statically checked that assuming there is a derivation of the original code, then there will be a derivation in the base language of the rewriting, i.e. it can be statically checked that the rewriting is correct as written, and each use can be checked for correctness without actually performing the rewriting. SDF is used for the syntactic specification of languages and language extensions.
+
+SoundX can technically fail during rewriting. Rewriting is done on derivation trees, and the same construct may appear in multiple premises. If those appearances rewrite into different, incompatible, desugarings the process will fail.
+
+\subsection{Copper and Silver}
+
+Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. It uses a modified LR parsing algorithm. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver \cite{VanWyk2010} uses attribute grammars to specify modular language extensions on some host language, along with guarantees on some of their behaviour under composition \cite{Kaminski2017}. Silver uses Copper for grammar specification.
+
+\chapter{Results and Discussion}
+
+\section{Results}
+
+\section{Discussion}
+
+\section{Conclusion}
+
 \printbibliography[heading=bibintoc]
 
-\appendix
+% \appendix
 
-\chapter{Unnecessary Appended Material}
+% \chapter{Unnecessary Appended Material}
 
 \end{document}
