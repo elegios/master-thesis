@@ -1,6 +1,8 @@
 {
 module Lexer
 ( tokenize
+, sameContent
+, Ranged(..)
 , Token(..)
 , Position(..)
 , Range(..)
@@ -36,12 +38,30 @@ data Token = IdentifierTok Range String
            | FloatTok Range Double
            | SymbolTok Range String
            | StringTok Range String
-           deriving (Show, Eq)
+           deriving (Eq)
 
 processString :: String -> String
 processString = init . tail
 
 tokenize = alexScanTokens
+
+sameContent :: Token -> Token -> Bool
+sameContent (IdentifierTok _ t1) (IdentifierTok _ t2) = t1 == t2
+sameContent (IntegerTok _ t1) (IntegerTok _ t2) = t1 == t2
+sameContent (FloatTok _ t1) (FloatTok _ t2) = t1 == t2
+sameContent (SymbolTok _ t1) (SymbolTok _ t2) = t1 == t2
+sameContent (StringTok _ t1) (StringTok _ t2) = t1 == t2
+sameContent _ _ = False
+
+class Ranged a where
+  range :: a -> Range
+
+instance Ranged Token where
+  range (IdentifierTok r _) = r
+  range (IntegerTok r _) = r
+  range (FloatTok r _) = r
+  range (SymbolTok r _) = r
+  range (StringTok r _) = r
 
 -- Alex stuff, slightly rewritten "posn" wrapper (to have a range, not just a position)
 
@@ -110,6 +130,16 @@ instance Monoid Range where
   mappend NoRange b = b
   mappend a NoRange = a
   mappend (Range s1 e1) (Range s2 e2) = Range (min s1 s2) (max e1 e2)
+
+instance Ranged Range where
+  range = id
+
+instance Show Token where
+  show (IdentifierTok _ s) = "identifier(" ++ s ++ ")"
+  show (IntegerTok _ i) = "integer(" ++ show i ++ ")"
+  show (FloatTok _ d) = "float(" ++ show d ++ ")"
+  show (SymbolTok _ s) = "symbol(" ++ s ++ ")"
+  show (StringTok _ s) = "string(" ++ s ++ ")"
 
 --alexScanTokens :: String -> [token]
 alexScanTokens str = go (alexStartPos,'\n',[],str)
