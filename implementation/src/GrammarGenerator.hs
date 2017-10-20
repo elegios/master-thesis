@@ -33,17 +33,16 @@ parseGrammar :: String -> [Construction] -> [Token] -> ([Node], Report String [T
 parseGrammar startTy constructions = fullParses $ parser $ do
   syntax <- mfix $ \nonTerminals ->
     constructions
-      & groupBy ((==) `on` syntaxType)
-      & fmap (syntaxType . head &&& id)
-      & mapM (\p@(ty, _) -> (ty,) <$> generateType p nonTerminals)
-      & fmap M.fromList
+      & fmap (syntaxType &&& (:[]))
+      & M.fromListWith mappend
+      & M.traverseWithKey (\ty constructions -> generateType ty constructions nonTerminals)
   return $ syntax M.! startTy
 
-generateType :: (String, [Construction]) -> M.Map String (Production r Node) -> Grammar r (Production r Node)
-generateType (currentTy, constructions) nonTerminals =
+generateType :: String -> [Construction] -> M.Map String (Production r Node) -> Grammar r (Production r Node)
+generateType currentTy constructions nonTerminals =
   constructions
+    & sortBy (compare `on` fmap (* (-1)) . precData . extraData)
     & groupBy ((==) `on` precData . extraData)
-    & sortBy (compare `on` fmap (* (-1)) . precData . extraData . head)
     & (\(bot:rest) -> genBot bot >>= \bot' -> foldlM genLevel bot' rest)
   where
     currentType = nonTerminals M.! currentTy
@@ -84,7 +83,7 @@ generateType (currentTy, constructions) nonTerminals =
             let (acc', prod) = if pat == currentTy
                 then (nextAssoc acc, if this acc then thisLevel else nextLevel)
                 else (acc, nonTerminals M.! pat)
-            in (acc', (Nothing,) . MidNode <$> prod <?> pat)
+            in (acc', (Nothing,) . MidNode <$> prod)
         basic acc = (acc,) . fmap ((Nothing,) . Basic)
 
 data AssocState = AlwaysThis | OnceThis | NeverThis deriving (Eq)
