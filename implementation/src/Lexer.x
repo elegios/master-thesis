@@ -134,6 +134,9 @@ instance Monoid Range where
 instance Ranged Range where
   range = id
 
+instance Ranged a => Ranged [a] where
+  range = mconcat . fmap Lexer.range
+
 instance Show Token where
   show (IdentifierTok _ s) = "identifier(" ++ s ++ ")"
   show (IntegerTok _ i) = "integer(" ++ show i ++ ")"

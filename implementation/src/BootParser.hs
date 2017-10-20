@@ -34,7 +34,7 @@ data SyntaxPattern = IdentifierPat
                    | NamedPat String SyntaxPattern
                    deriving (Show)
 
-data Repeat = StarRep | PlusRep | QuestionRep deriving (Show)
+data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq)
 
 data ExtraData = ExtraData
   { assocData :: Maybe AssocData
