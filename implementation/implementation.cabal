@@ -23,6 +23,7 @@ library
   build-depends:       base >= 4.7 && < 5
                      , array
                      , containers
+                     , pretty
                      , Earley
   build-tools:         alex
   default-language:    Haskell2010

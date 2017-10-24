@@ -1,6 +1,7 @@
 module Main where
 
 import Control.DeepSeq (force)
+
 import Control.Exception (evaluate)
 import Control.Monad (forM_)
 import Data.Char (generalCategory)
@@ -21,7 +22,7 @@ ambiguityParse startSym grammar source = do
   putStrLn $ show report
   case results of
     [] -> putStrLn "Nothing parsed"
-    [res] -> putStrLn $ show res
+    [res] -> putStrLn $ prettyShow res
     _ -> forM_ (ambiguities results) $ \(r, reprs) -> do
       putStrLn $ "Ambiguity: " ++ show r
       putStrLn . unlines $ show <$> reprs
@@ -29,10 +30,10 @@ ambiguityParse startSym grammar source = do
     parseFile parser source = withFile source ReadMode $ \f ->
       hGetContents f >>= evaluate . parser . tokenize . force
     getConstructions path = withFile path ReadMode $ \f -> do
-      (parses, _) <- parseSyntax . tokenize <$> hGetContents f
+      (parses, rep) <- parseSyntax . tokenize <$> hGetContents f
       case parses of
         [p] -> return p
-        [] -> error $ "Got no parses of grammar file \"" ++ path ++ "\""
+        [] -> error $ "Got no parses of grammar file \"" ++ path ++ "\": " ++ show rep
         _ -> error $ "Got too many parses of grammar file \"" ++ path ++ "\""
 
 fullParse :: IO ()

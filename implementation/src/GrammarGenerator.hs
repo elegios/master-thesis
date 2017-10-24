@@ -1,6 +1,6 @@
 {-# LANGUAGE Rank2Types #-}
 
-module GrammarGenerator (parseGrammar, Node(..), MidNode(..)) where
+module GrammarGenerator (parseGrammar, Node(..), MidNode(..), pretty, prettyShow) where
 
 import Data.Function ((&), on)
 import Data.List (groupBy, sortBy, intercalate)
@@ -10,7 +10,10 @@ import Data.Foldable (asum, foldlM)
 import Control.Applicative (some, many, optional)
 import Control.Arrow ((&&&), first, second)
 import Control.Monad.Fix (mfix)
+
 import qualified Data.Map as M
+import Text.PrettyPrint ((<>), (<+>))
+import qualified Text.PrettyPrint as P
 
 import Text.Earley
 
@@ -127,3 +130,21 @@ showNamed :: [(String, MidNode)] -> String
 showNamed named = "(" ++ intercalate ", " (arg <$> named) ++ ")"
   where
     arg (name, node) = name ++ " = " ++ show node
+
+pretty :: Node -> P.Doc
+pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
+  where
+    prettyNamed cs = cs
+      & fmap (\(n, mid) -> P.text n <+> P.equals <+> prettyMid mid)
+      & P.punctuate P.comma
+      & P.vcat & P.parens
+    namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid
+    prettyMid (MidNode n) = pretty n
+    prettyMid (Basic t) = P.text $ show t
+    prettyMid (Repeated _ mids) = prettyMid <$> mids
+      & P.punctuate P.comma
+      & P.sep & P.brackets
+    prettyMid (Sequenced named _) = prettyNamed named
+
+prettyShow :: Node -> String
+prettyShow = P.render . pretty
