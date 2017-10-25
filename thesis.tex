@@ -45,7 +45,7 @@ Kommer så småningom
 \mainmatter
 
 
-\chapter{Introduction}
+\chapter{Introduction} \label{sec:introduction}
 
 The implementation of a programming language---be it an interpreter or a compiler---tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
 
@@ -125,7 +125,7 @@ This thesis contributes the following:
   \item Proof that macro expansion using the above method terminates, given a finite input (section \ref{sec:proof-termination}).
   \item Proof that macro expansion does not introduce any binding errors (alternatively preservation of $\alpha$-equivalence) (section \ref{sec:proof-no-errors}).
   \item An implementation of a non-trivial subset of JavaScript/Lua (section \ref{sec:imperative-eval}) to evaluate the method's suitability in modeling a typical imperative language.
-  \item An implementation of a non-trivial subset of OCaml (section \ref{sec:functional-eval}) to evaluate the method's suitability in modeling a typical functional language, including pattern matching.
+  \item An implementation of a non-trivial subset of OCaml (section \ref{sec:functional-eval}) to evaluate the method's suitability in modeling a typical functional language, focusing on pattern matching.
 \end{itemize}
 
 \chapter{Design}
@@ -150,17 +150,13 @@ This thesis contributes the following:
 
 \chapter{Related Work}
 
+The related work is separated roughly based on the degree to which they solve the two problems introduced in section \ref{introduction}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
+
 \section{Abstraction Solutions} \label{sec:abstraction-solutions}
 
-\subsection{Sets of Scopes}
+Lisps have long had macro systems that do not introduce accidental name capture, mostly through renaming (TODO: references). The latest iteration of Racket's \cite{plt-tr1} macro expander instead achieves binding hygiene by using sets of scopes \cite{Flatt:2016:BSS:2837614.2837620}. Somewhat simplified, a set of scopes is attached to each identifier, namely the scopes that contain it. To find the binding referred to by an identifier with set $s_i$, find the binding with set $s_b \subseteq s_i$ such that for all other sets $s'_b \subseteq s_i$ attached to binders, $s'_b \subset s_b$, i.e. $s_b$ is the largest subset of $s_i$. The authors report the implementation as simpler to follow, and while ambiguous references are possible they do not appear in practice.
 
-The latest iteration of Racket's \cite{plt-tr1} macro expander achieves binding hygiene by using sets of scopes \cite{Flatt:2016:BSS:2837614.2837620}. The previous iteration used a renaming approach, where references were automatially renamed to prevent accidental capture, but the workings and implementation of the method were difficult to follow. In the new method, each binding construction introduces a scope, which is attached to everything in the body. Thus each reference has an attached set of scopes. To find the binding of a particular reference, find bindings whose respective sets are subsets of the reference's set. If there are multiple, pick the one that is a superset of the others. If no such identifier exists, the reference is ambiguous.
-
-To minimize the number of ambiguous cases, each macro definition and macro use attaches a new scope. Even with these two extra scopes ambiguous references are still possible, but according to \textcite{Flatt:2016:BSS:2837614.2837620} they do not appear in practice.
-
-\subsection{$\lambda_m$}
-
-$\lambda_m$ \cite{Herman2010} is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
+$\lambda_m$ \cite{Herman2010} takes a different route and is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
 
 Some notable differences exist however:
 \begin{itemize}
@@ -170,38 +166,30 @@ Some notable differences exist however:
   printf("foo: %d\n", foo);
   \end{minted}
   The local variable \mintinline{c}{foo} is available for the remainder of the scope, potentially long after the declaration has ended. This thesis handles both kinds of binding.
-  \item The macro type signatures in this thesis are never fully explicit, they appear spread out through each macro definition amongst other aspects of the definition. $\lambda_m$ in contrast uses a complete type signature for each macro.
+  \item TODO: EBNF, recursion and union types
 \end{itemize}
 
-$\lambda_m$ also introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and also place focus on allowing reasoning about unexpanded programs.
+In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs.
 
-\subsection{Romeo}
-
-\textcite{Stansifer2014} introduce Romeo, a language extending $\lambda_m$ by providing full syntax manipulation capabilities while still retaining hygiene. $\lambda_m$ is limited to pattern matching and replacing, while Romeo can manipulate terms as data.
+Romeo \cite{Stansifer2014} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$.
 
 \section{Syntax Solutions} \label{sec:syntax-solutions}
 
-\subsection{SDF}
-
-The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually and may be spread across several files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
+The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually, allowing non-terminals to be spread across files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
 
 A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
 
-\subsection{Layout-sensitive SDF}
+SDF has also been extended to handle layout-sensitive grammars \cite{Erdweg2013} through extra annotations, thus retaining the declarative nature of a grammar.
 
-\textcite{Erdweg2013} extend SDF to handle layout-sensitive grammars in a declarative manner through annotations in each production restricting their relative positions. To achieve this they determine a limited subset of possible layout restrictions that are sufficient to describe the rules of most layout-sensitive languages.
+\textcite{Silkensen2013} instead consider the problem of combining already constructed grammars in a scalable way. The main observation they use is that most domain specific languages deal with values of different types. With this in mind the different grammars can use these types, for example using non-terminals such as \mintinline{text}{Matrix} instead of \mintinline{text}{Expression}. Additionally, if identifiers can be specified to have a specific type (e.g. \mintinline{text}{Matrix}) they can be used as islands in island parsing. By using these two things the authors present a parsing algorithm that needs to examine far fewer possible parsings, even in the presence of many DSLs. The precise scalability claim can be found in the paper.
 
 \section{Combined Solutions} \label{sec:full-solutions}
 
-\subsection{SoundX}
+SoundX \cite{Lorenzen2016} is a system for specifying extensible languages. It uses SDF (see section \ref{sec:syntax-solutions}) to specify syntax and adds type rules and type judgements. A language extension is specified as a set of rewritings (macros) and type rules for the rewritings. Macros in SoundX are checked to guarantee that they preserve abstraction on a type level, i.e. they introduce no type errors during rewriting. Similarly, code can be type checked without performing rewriting.
 
-\textcite{Lorenzen2016} introduce SoundX, a system for specifying syntax and type rules for a base language, and then language extensions through rewritings (macros). Each rewriting also has specified type rules, detailing what is required for a successful type derivation. Through these it can be statically checked that assuming there is a derivation of the original code, then there will be a derivation in the base language of the rewriting, i.e. it can be statically checked that the rewriting is correct as written, and each use can be checked for correctness without actually performing the rewriting. SDF is used for the syntactic specification of languages and language extensions.
+The system works through a rewriting of derivation trees, not pure syntax, thus macros have access to not only types explicit in a program but also derived types.
 
-SoundX can technically fail during rewriting. Rewriting is done on derivation trees, and the same construct may appear in multiple premises. If those appearances rewrite into different, incompatible, desugarings the process will fail.
-
-\subsection{Copper and Silver}
-
-Copper \cite{VanWyk2007} defines a grammar and a lexical scanner that works in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. It uses a modified LR parsing algorithm. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver \cite{VanWyk2010} uses attribute grammars to specify modular language extensions on some host language, along with guarantees on some of their behaviour under composition \cite{Kaminski2017}. Silver uses Copper for grammar specification.
+Copper \cite{VanWyk2007} and Silver \cite{VanWyk2010} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017}.
 
 \chapter{Results and Discussion}
 
