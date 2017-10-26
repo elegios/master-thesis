@@ -1,9 +1,9 @@
 {-# LANGUAGE Rank2Types #-}
 
-module GrammarGenerator (parseGrammar, Node(..), MidNode(..), pretty, prettyShow) where
+module GrammarGenerator (parseGrammar) where
 
 import Data.Function ((&), on)
-import Data.List (groupBy, sortBy, intercalate)
+import Data.List (groupBy, sortBy)
 import Data.Maybe (mapMaybe, maybeToList)
 import Data.Traversable (mapAccumL, mapAccumR)
 import Data.Foldable (asum, foldlM)
@@ -12,23 +12,12 @@ import Control.Arrow ((&&&), first, second)
 import Control.Monad.Fix (mfix)
 
 import qualified Data.Map as M
-import Text.PrettyPrint ((<>), (<+>))
-import qualified Text.PrettyPrint as P
 
 import Text.Earley
 
-import Lexer (sameContent, Range, Token(..), Ranged(..))
-import BootParser
-
-data Node = Node
-  { name :: String
-  , children :: [(String, MidNode)]
-  , nodeRange :: Range }
-
-data MidNode = MidNode Node
-             | Basic Token
-             | Repeated Repeat [MidNode]
-             | Sequenced [(String, MidNode)] Range
+import Types.Lexer (sameContent, Token(..), Ranged(..))
+import Types.Construction
+import Types.Ast
 
 type Production r a = Prod r String Token a
 
@@ -38,11 +27,11 @@ parseGrammar startTy constructions = fullParses $ parser $ do
     constructions
       & fmap (syntaxType &&& (:[]))
       & M.fromListWith mappend
-      & M.traverseWithKey (\ty constructions -> generateType ty constructions nonTerminals)
+      & M.traverseWithKey (generateType nonTerminals)
   return $ syntax M.! startTy
 
-generateType :: String -> [Construction] -> M.Map String (Production r Node) -> Grammar r (Production r Node)
-generateType currentTy constructions nonTerminals =
+generateType :: M.Map String (Production r Node) -> String -> [Construction] -> Grammar r (Production r Node)
+generateType nonTerminals currentTy constructions =
   constructions
     & sortBy (compare `on` fmap (* (-1)) . precData . extraData)
     & groupBy ((==) `on` precData . extraData)
@@ -107,44 +96,3 @@ string :: Production r Token
 string = satisfy (\case { StringTok{} -> True; _ -> False }) <?> "string"
 identifier :: Production r Token
 identifier = satisfy (\case { IdentifierTok{} -> True; _ -> False }) <?> "identifier"
-
-instance Show Node where
-  show Node{name, children, nodeRange} = name ++ "{" ++ show nodeRange ++ "}" ++ showNamed children
-
-instance Show MidNode where
-  show (MidNode n) = show n
-  show (Basic t) = show t
-  show (Repeated _ mids) = "[" ++ intercalate ", " (show <$> mids) ++ "]"
-  show (Sequenced named r) = "{" ++ show r ++ "}" ++ showNamed named
-
-instance Ranged Node where
-  range = nodeRange
-
-instance Ranged MidNode where
-  range (MidNode n) = range n
-  range (Basic t) = range t
-  range (Repeated _ ns) = mconcat $ range <$> ns
-  range (Sequenced _ r) = r
-
-showNamed :: [(String, MidNode)] -> String
-showNamed named = "(" ++ intercalate ", " (arg <$> named) ++ ")"
-  where
-    arg (name, node) = name ++ " = " ++ show node
-
-pretty :: Node -> P.Doc
-pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
-  where
-    prettyNamed cs = cs
-      & fmap (\(n, mid) -> P.text n <+> P.equals <+> prettyMid mid)
-      & P.punctuate P.comma
-      & P.vcat & P.parens
-    namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid
-    prettyMid (MidNode n) = pretty n
-    prettyMid (Basic t) = P.text $ show t
-    prettyMid (Repeated _ mids) = prettyMid <$> mids
-      & P.punctuate P.comma
-      & P.sep & P.brackets
-    prettyMid (Sequenced named _) = prettyNamed named
-
-prettyShow :: Node -> String
-prettyShow = P.render . pretty

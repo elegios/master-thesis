@@ -8,7 +8,11 @@ import Data.Char (generalCategory)
 import System.Environment (getArgs)
 import System.IO (hGetContents, withFile, IOMode(ReadMode))
 
-import Lib
+import Lexer
+import BootParser
+import GrammarGenerator
+import Types.Ast
+import Ambiguity
 
 main :: IO ()
 main = do

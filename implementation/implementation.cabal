@@ -15,10 +15,12 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib
-  other-modules:       Lexer
+  exposed-modules:     Lexer
+                     , Types.Lexer
                      , BootParser
+                     , Types.Construction
                      , GrammarGenerator
+                     , Types.Ast
                      , Ambiguity
   build-depends:       base >= 4.7 && < 5
                      , array
@@ -31,6 +33,14 @@ library
                      , LambdaCase
                      , TupleSections
                      , DisambiguateRecordFields
+  ghc-options:
+    -fwarn-tabs
+    -fwarn-unused-imports
+    -fwarn-incomplete-patterns
+    -fwarn-overlapping-patterns
+    -fwarn-incomplete-record-updates
+    -fwarn-missing-signatures
+    -fwarn-orphans
 
 executable implementation-exe
   hs-source-dirs:      app
