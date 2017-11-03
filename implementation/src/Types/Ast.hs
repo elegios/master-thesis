@@ -1,6 +1,6 @@
 module Types.Ast
-( Node(..)
-, MidNode(..)
+( NodeI(..)
+, MidNodeI(..)
 , pretty
 , prettyShow
 ) where
@@ -14,40 +14,43 @@ import qualified Text.PrettyPrint as P
 import Types.Construction (Repeat(..))
 import Types.Lexer (Ranged(..), Range, Token)
 
-data Node = Node
+data NodeI i = Node
   { name :: String
-  , children :: [(String, MidNode)]
+  , children :: [(String, MidNodeI i)]
   , nodeRange :: Range }
 
-data MidNode = MidNode Node
-             | Basic Token
-             | Repeated Repeat [MidNode]
-             | Sequenced [(String, MidNode)] Range
+data MidNodeI i = MidNode (NodeI i)
+                | MidIdentifier Range i
+                | Basic Token
+                | Repeated Repeat [MidNodeI i]
+                | Sequenced Range [(String, MidNodeI i)]
 
-instance Show Node where
+instance Show i => Show (NodeI i) where
   show Node{name, children, nodeRange} = name ++ "{" ++ show nodeRange ++ "}" ++ showNamed children
 
-instance Show MidNode where
+instance Show i => Show (MidNodeI i) where
   show (MidNode n) = show n
+  show (MidIdentifier _ i) = "ident(" ++ show i ++ ")"
   show (Basic t) = show t
   show (Repeated _ mids) = "[" ++ intercalate ", " (show <$> mids) ++ "]"
-  show (Sequenced named r) = "{" ++ show r ++ "}" ++ showNamed named
+  show (Sequenced r named) = "{" ++ show r ++ "}" ++ showNamed named
 
-instance Ranged Node where
+instance Ranged (NodeI i) where
   range = nodeRange
 
-instance Ranged MidNode where
+instance Ranged (MidNodeI i) where
   range (MidNode n) = range n
+  range (MidIdentifier r _) = r
   range (Basic t) = range t
   range (Repeated _ ns) = mconcat $ range <$> ns
-  range (Sequenced _ r) = r
+  range (Sequenced r _) = r
 
-showNamed :: [(String, MidNode)] -> String
+showNamed :: Show i => [(String, MidNodeI i)] -> String
 showNamed named = "(" ++ intercalate ", " (arg <$> named) ++ ")"
   where
     arg (name, node) = name ++ " = " ++ show node
 
-pretty :: Node -> P.Doc
+pretty :: Show i => NodeI i -> P.Doc
 pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
   where
     prettyNamed cs = cs
@@ -56,11 +59,12 @@ pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
       & P.vcat & P.parens
     namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid
     prettyMid (MidNode n) = pretty n
+    prettyMid i@MidIdentifier{} = P.text $ show i
     prettyMid (Basic t) = P.text $ show t
     prettyMid (Repeated _ mids) = prettyMid <$> mids
       & P.punctuate P.comma
       & P.sep & P.brackets
-    prettyMid (Sequenced named _) = prettyNamed named
+    prettyMid (Sequenced _ named) = prettyNamed named
 
-prettyShow :: Node -> String
+prettyShow :: Show i => NodeI i -> String
 prettyShow = P.render . pretty

@@ -21,6 +21,9 @@ import Types.Ast
 
 type Production r a = Prod r String Token a
 
+type Node = NodeI String
+type MidNode = MidNodeI String
+
 parseGrammar :: String -> [Construction] -> [Token] -> ([Node], Report String [Token])
 parseGrammar startTy constructions = fullParses $ parser $ do
   syntax <- mfix $ \nonTerminals ->
@@ -46,21 +49,22 @@ generateType nonTerminals currentTy constructions =
         & (nextLevel:) & asum & rule
     generateConstruction :: M.Map String (Production r Node) -> Production r Node -> Production r Node -> Construction -> Production r Node
     generateConstruction nonTerminals thisLevel nextLevel Construction{name, syntaxType, syntax, extraData} =
-      uncurry (Node name) <$> case assocData extraData of
+      construct <$> case assocData extraData of
         Just _ -> snd $ sequencePats OnceThis syntax
         Nothing -> snd $ sequencePats AlwaysThis syntax
       where
+        construct (r, cs) = Node { name = name, nodeRange = r, children = cs }
         sequencePats acc pats = mapAccum toProd acc pats
-          & second (fmap namedAndRange . sequenceA)
+          & second (fmap rangeAndNamed . sequenceA)
         mapAccum = case assocData extraData of
           Just AssocRight -> mapAccumR
           _ -> mapAccumL
-        namedAndRange children =
+        rangeAndNamed children =
           let r = mconcat $ range . snd <$> children
               named = mapMaybe (\(n, mn) -> (, mn) <$> n) children
-          in (named, r)
+          in (r, named)
         toProd acc = \case
-          IdentifierPat -> basic acc identifier
+          IdentifierPat -> (acc,) $ (Nothing,) <$> identifier
           IntegerPat -> basic acc integer
           FloatPat -> basic acc float
           StringPat -> basic acc string
@@ -94,5 +98,5 @@ float :: Production r Token
 float = satisfy (\case { FloatTok{} -> True; _ -> False }) <?> "float"
 string :: Production r Token
 string = satisfy (\case { StringTok{} -> True; _ -> False }) <?> "string"
-identifier :: Production r Token
-identifier = satisfy (\case { IdentifierTok{} -> True; _ -> False }) <?> "identifier"
+identifier :: Production r MidNode
+identifier = terminal (\case { (IdentifierTok r s) -> Just $ MidIdentifier r s; _ -> Nothing }) <?> "identifier"

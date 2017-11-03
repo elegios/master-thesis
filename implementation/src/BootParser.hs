@@ -20,12 +20,22 @@ construction = mdo
   syntaxPs <- syntaxPatterns
   extraSpec <- rule $ lit "#" *> lit "assoc" *> terminal assoc
                   <|> lit "#" *> lit "prec" *> pure prec <*> integer
+                  <|> lit "#" *> lit "bind" *> pure before <*> commaIds <* lit "before"
+                  <|> lit "#" *> lit "bind" *> pure after <*> commaIds <* lit "after"
+                  <|> lit "#" *> lit "bind" *> pure bind <*> binding
+                  <|> lit "#" *> lit "scope" *> pure (bind . ([],)) <*> commaIds
+  binding <- rule $ (,) <$> commaIds <* lit "in"
+                        <* lit "scope" <*> commaIds
   rule $ lit "syntax" *> pure Construction <*>
          identifier <* lit ":" <*>
          identifier <* lit "=" <*>
          syntaxPs <* lit "{" <*>
          (mconcat <$> many extraSpec) <* lit "}"
   where
+    commaIds = (:) <$> identifier <*> many (lit "," *> identifier)
+    bind bs = mempty { bindingData = [bs] }
+    before bs = mempty { beforeBindings = bs }
+    after bs = mempty { afterBindings = bs }
     prec i = mempty { precData = Just i }
     assoc (IdentifierTok _ "left") = Just $ mempty { assocData = Just AssocLeft }
     assoc (IdentifierTok _ "right") = Just $ mempty { assocData = Just AssocRight }

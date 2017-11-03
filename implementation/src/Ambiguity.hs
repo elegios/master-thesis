@@ -5,7 +5,10 @@ import Control.Arrow ((&&&))
 
 import Types.Lexer (Ranged(..), Range, Token(..))
 import Types.Construction (Repeat(..))
-import Types.Ast (Node(Node, name), MidNode(..))
+import Types.Ast (NodeI(Node, name), MidNodeI(..))
+
+type Node = NodeI String
+type MidNode = MidNodeI String
 
 ambiguities :: [Node] -> [(Range, [[SimpleRepr]])]
 ambiguities nodes = ambig $ midWrap <$> nodes
@@ -32,13 +35,14 @@ ambig nodes@(node:_) =
 
 toSimple :: MidNode -> SimpleRepr
 toSimple (MidNode n@Node{name}) = SimpleRepr (NodeTag name) (range n)
+toSimple (MidIdentifier r i) = SimpleRepr IdentifierTag r
 toSimple (Basic t@IdentifierTok{}) = SimpleRepr IdentifierTag (range t)
 toSimple (Basic t@SymbolTok{}) = SimpleRepr SymbolTag (range t)
 toSimple (Basic t@StringTok{}) = SimpleRepr StringTag (range t)
 toSimple (Basic t@IntegerTok{}) = SimpleRepr IntegerTag (range t)
 toSimple (Basic t@FloatTok{}) = SimpleRepr FloatTag (range t)
 toSimple n@(Repeated r _) = SimpleRepr (RepeatTag r) (range n)
-toSimple (Sequenced _ r) = SimpleRepr SequencedTag r
+toSimple (Sequenced r _) = SimpleRepr SequencedTag r
 
 allEq :: Eq a => [a] -> Bool
 allEq [] = True
@@ -51,9 +55,10 @@ keepOnly _ _ = []
 
 children :: MidNode -> [MidNode]
 children (MidNode (Node _ children _)) = snd <$> children
+children MidIdentifier{} = []
 children Basic{} = []
 children (Repeated _ cs) = cs
-children (Sequenced cs _) = snd <$> cs
+children (Sequenced _ cs) = snd <$> cs
 
 data SimpleRepr = SimpleRepr Tag Range deriving (Show, Eq)
 data Tag = NodeTag String
