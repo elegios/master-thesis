@@ -16,7 +16,6 @@ import Control.Monad.Tardis (Tardis, evalTardis, getsPast, getFuture, modifyForw
 
 import Types.Lexer (Range)
 import Types.Construction (Construction(extraData), ExtraData(ExtraData, bindingData, beforeBindings, afterBindings))
-import qualified Types.Construction as Construction
 import Types.Ast
 
 {-
@@ -47,12 +46,12 @@ data Result e a = Data a | Error [e]
 
 type Res = Result String
 
-resolve :: [Construction] -> NodeI String -> Result String (NodeI GenSym)
+resolve :: M.Map String (Construction n) -> NodeI String -> Result String (NodeI GenSym)
 resolve constructions n = evalTardis (res n) (M.empty, initial)
   where
     initial = ResolverState
       { nextSym = 0
-      , extra = M.fromList $ (Construction.name &&& extraData) <$> constructions
+      , extra = extraData <$> constructions
       , lookupTable = M.empty
       , definedInThisScope = M.empty }
 
@@ -91,6 +90,7 @@ instance Resolvable NodeI where
 instance Resolvable MidNodeI where
   res (MidNode n) = fmap MidNode <$> res n
   res (MidIdentifier r i) = fmap (MidIdentifier r) <$> lookupBinding i r
+  res (SyntaxSplice r i) = return . pure $ SyntaxSplice r i
   res (Basic t) = return . pure $ Basic t
   res (Repeated rep cs) = fmap (Repeated rep) . sequenceA
     <$> mapM res cs

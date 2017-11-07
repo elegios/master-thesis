@@ -36,6 +36,7 @@ ambig nodes@(node:_) =
 toSimple :: MidNode -> SimpleRepr
 toSimple (MidNode n@Node{name}) = SimpleRepr (NodeTag name) (range n)
 toSimple (MidIdentifier r i) = SimpleRepr IdentifierTag r
+toSimple (SyntaxSplice r i) = SimpleRepr SpliceTag r
 toSimple (Basic t@IdentifierTok{}) = SimpleRepr IdentifierTag (range t)
 toSimple (Basic t@SymbolTok{}) = SimpleRepr SymbolTag (range t)
 toSimple (Basic t@StringTok{}) = SimpleRepr StringTag (range t)
@@ -56,6 +57,7 @@ keepOnly _ _ = []
 children :: MidNode -> [MidNode]
 children (MidNode (Node _ children _)) = snd <$> children
 children MidIdentifier{} = []
+children SyntaxSplice{} = []
 children Basic{} = []
 children (Repeated _ cs) = cs
 children (Sequenced _ cs) = snd <$> cs
@@ -63,6 +65,7 @@ children (Sequenced _ cs) = snd <$> cs
 data SimpleRepr = SimpleRepr Tag Range deriving (Show, Eq)
 data Tag = NodeTag String
          | IdentifierTag
+         | SpliceTag
          | SymbolTag
          | StringTag
          | IntegerTag

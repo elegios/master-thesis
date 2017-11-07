@@ -21,6 +21,7 @@ data NodeI i = Node
 
 data MidNodeI i = MidNode (NodeI i)
                 | MidIdentifier Range i
+                | SyntaxSplice Range String
                 | Basic Token
                 | Repeated Repeat [MidNodeI i]
                 | Sequenced Range [(String, MidNodeI i)]
@@ -31,6 +32,7 @@ instance Show i => Show (NodeI i) where
 instance Show i => Show (MidNodeI i) where
   show (MidNode n) = show n
   show (MidIdentifier _ i) = "ident(" ++ show i ++ ")"
+  show (SyntaxSplice _ i) = "splice(" ++ show i ++ ")"
   show (Basic t) = show t
   show (Repeated _ mids) = "[" ++ intercalate ", " (show <$> mids) ++ "]"
   show (Sequenced r named) = "{" ++ show r ++ "}" ++ showNamed named
@@ -41,6 +43,7 @@ instance Ranged (NodeI i) where
 instance Ranged (MidNodeI i) where
   range (MidNode n) = range n
   range (MidIdentifier r _) = r
+  range (SyntaxSplice r _) = r
   range (Basic t) = range t
   range (Repeated _ ns) = mconcat $ range <$> ns
   range (Sequenced r _) = r
@@ -60,6 +63,7 @@ pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
     namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid
     prettyMid (MidNode n) = pretty n
     prettyMid i@MidIdentifier{} = P.text $ show i
+    prettyMid i@SyntaxSplice{} = P.text $ show i
     prettyMid (Basic t) = P.text $ show t
     prettyMid (Repeated _ mids) = prettyMid <$> mids
       & P.punctuate P.comma

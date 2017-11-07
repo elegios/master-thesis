@@ -4,11 +4,12 @@ import Control.Applicative ((<|>))
 
 import Types.Lexer (Token)
 
-data Construction = Construction
+data Construction n = Construction
   { name :: String
   , syntaxType :: String
   , syntax :: [SyntaxPattern]
-  , extraData :: ExtraData }
+  , extraData :: ExtraData
+  , implementation :: Implementation n }
   deriving (Show)
 
 -- The Strings are the names of the various segments (argument names, so to speak)
@@ -43,3 +44,9 @@ instance Monoid ExtraData where
               (mappend bm1 bm2)
 
 data AssocData = AssocLeft | AssocRight deriving (Show)
+
+data Implementation n = Syntax n
+                      | Builtin
+                      | Simple String
+                      | Fold String String n (Implementation n)
+                      deriving (Show)

@@ -1,6 +1,6 @@
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE RecursiveDo, Rank2Types #-}
 
-module BootParser (parseSyntax) where
+module BootParser (parseConstructions) where
 
 import Control.Applicative ((<|>), some, many)
 
@@ -10,13 +10,15 @@ import Lexer (tokenize)
 import Types.Lexer (sameContent, Token(..))
 import Types.Construction
 
-parseSyntax :: [Token] -> ([[Construction]], Report String [Token])
-parseSyntax = fullParses $ parser constructions
-  where
-    constructions = many <$> construction
+type Production r a = Prod r String Token a
 
-construction :: Grammar r (Prod r String Token Construction)
-construction = mdo
+parseConstructions :: (forall r. Grammar r (Production r n)) -> [Token] -> ([[Construction n]], Report String [Token])
+parseConstructions impl = fullParses $ parser constructions
+  where
+    constructions = impl >>= \impl' -> many <$> construction impl'
+
+construction :: Production r n -> Grammar r (Production r (Construction n))
+construction impl = mdo
   syntaxPs <- syntaxPatterns
   extraSpec <- rule $ lit "#" *> lit "assoc" *> terminal assoc
                   <|> lit "#" *> lit "prec" *> pure prec <*> integer
@@ -26,11 +28,18 @@ construction = mdo
                   <|> lit "#" *> lit "scope" *> pure (bind . ([],)) <*> commaIds
   binding <- rule $ (,) <$> commaIds <* lit "in"
                         <* lit "scope" <*> commaIds
+  implementation <- rule $ Syntax <$> impl
+                       <|> lit "(" *> implementation <* lit ")"
+                       <|> simpleOrBuiltin <$> identifier
+                       <|> lit "fold" *> pure Fold <*>
+                           identifier <*> identifier <*>
+                           impl <*> implementation
   rule $ lit "syntax" *> pure Construction <*>
          identifier <* lit ":" <*>
          identifier <* lit "=" <*>
          syntaxPs <* lit "{" <*>
-         (mconcat <$> many extraSpec) <* lit "}"
+         (mconcat <$> many extraSpec) <*>
+         implementation <* lit "}"
   where
     commaIds = (:) <$> identifier <*> many (lit "," *> identifier)
     bind bs = mempty { bindingData = [bs] }
@@ -40,6 +49,8 @@ construction = mdo
     assoc (IdentifierTok _ "left") = Just $ mempty { assocData = Just AssocLeft }
     assoc (IdentifierTok _ "right") = Just $ mempty { assocData = Just AssocRight }
     assoc _ = Nothing
+    simpleOrBuiltin "builtin" = Builtin
+    simpleOrBuiltin i = Simple i
 
 syntaxPatterns :: Grammar r (Prod r String Token [SyntaxPattern])
 syntaxPatterns = mdo
