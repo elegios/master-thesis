@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types, MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE Rank2Types, ScopedTypeVariables, FlexibleContexts #-}
 
 module GrammarGenerator (parseWithGrammar, implementationGrammar) where
 
@@ -7,7 +7,7 @@ import Data.List (groupBy, sortBy)
 import Data.Maybe (mapMaybe, maybeToList)
 import Data.Traversable (mapAccumL, mapAccumR)
 import Data.Foldable (asum, foldlM)
-import Control.Applicative (some, many, optional, (<|>))
+import Control.Applicative (some, many, optional, empty, (<|>))
 import Control.Arrow ((&&&), first, second)
 import Control.Monad.Fix (mfix)
 
@@ -21,50 +21,53 @@ import Types.Ast
 
 type Production r a = Prod r String Token a
 
-type Node = NodeI String
-type MidNode = MidNodeI String
+type Node s = NodeI s String
+type MidNode s = MidNodeI s String
+type SplicedNode = FixNode Splice String
 
-parseWithGrammar :: String -> M.Map String (Construction n) -> [Token] -> ([Node], Report String [Token])
+parseWithGrammar :: String -> M.Map String (Construction n) -> [Token] -> ([FixNode NoSplice String], Report String [Token])
 parseWithGrammar startTy constructions = fullParses $ parser $ do
   syntax <- mfix $ \nonTerminals ->
     M.elems constructions
       & fmap (syntaxType &&& (:[]))
       & M.fromListWith mappend
-      & M.traverseWithKey (generateType nonTerminals)
-  return $ syntax M.! startTy
+      & M.traverseWithKey (generateType empty nonTerminals)
+  return $ FixNode <$> syntax M.! startTy
 
--- TODO: foldl/foldr for implementation
--- TODO: splice a fold expr into raw implementation
-implementationGrammar :: M.Map String (Construction n) -> Grammar r (Production r Node)
-implementationGrammar constructions = do
+implementationGrammar :: M.Map String (Construction n) -> Production r (Splice SplicedNode) -> Grammar r (Production r SplicedNode)
+implementationGrammar constructions splice = do
   syntax <- mfix $ \nonTerminals ->
     M.elems constructions
       & fmap (syntaxType &&& (:[]))
       & M.fromListWith mappend
-      & M.traverseWithKey (generateType nonTerminals)
-  rule . asum $ toImpl <$> M.toList syntax
+      & M.traverseWithKey (generateType splice nonTerminals)
+  rule . fmap FixNode . asum $ toImpl <$> M.toList syntax
   where
     toImpl (syntaxType, prod) =
-      satisfy (sameContent $ IdentifierTok undefined syntaxType) *>
-      satisfy (sameContent $ SymbolTok undefined "`") *>
+      token (IdentifierTok undefined syntaxType) *>
+      token (SymbolTok undefined "`") *>
       prod
 
-generateType :: M.Map String (Production r Node) -> String -> [Construction n] -> Grammar r (Production r Node)
-generateType nonTerminals currentTy constructions =
+generateType :: forall r s n. Production r s -> M.Map String (Production r (Node s)) -> String -> [Construction n] -> Grammar r (Production r (Node s))
+generateType splice nonTerminals currentTy constructions =
   constructions
     & sortBy (compare `on` fmap (* (-1)) . precData . extraData)
     & groupBy ((==) `on` precData . extraData)
     & (\(bot:rest) -> genBot bot >>= \bot' -> foldlM genLevel bot' rest)
   where
+    typedSplice :: (s -> b s String) -> String -> Production r (b s String)
+    typedSplice constr ty =
+      token (SymbolTok undefined "`") *>
+      token (IdentifierTok undefined ty) *>
+      pure constr <*> splice
     currentType = nonTerminals M.! currentTy
     genBot level =
-      generateConstruction nonTerminals currentType currentType <$> level
-        & asum & rule
+      generateConstruction currentType currentType <$> level
+        & asum & (<|> typedSplice SyntaxSplice "t") & rule
     genLevel nextLevel level = mfix $ \thisLevel ->
-      generateConstruction nonTerminals thisLevel nextLevel <$> level
+      generateConstruction thisLevel nextLevel <$> level
         & (nextLevel:) & asum & rule
-    generateConstruction :: M.Map String (Production r Node) -> Production r Node -> Production r Node -> Construction n -> Production r Node
-    generateConstruction nonTerminals thisLevel nextLevel Construction{name, syntaxType, syntax, extraData} =
+    generateConstruction thisLevel nextLevel Construction{name, syntax, extraData} =
       construct <$> case assocData extraData of
         Just _ -> snd $ sequencePats syntax OnceThis
         Nothing -> snd $ sequencePats syntax AlwaysThis
@@ -80,11 +83,11 @@ generateType nonTerminals currentTy constructions =
               named = mapMaybe (\(n, mn) -> (, mn) <$> n) children
           in (r, named)
         toProd = \case
-          IdentifierPat -> accname $ uncurry MidIdentifier <$> identifier <|> splice
-          IntegerPat -> accname $ Basic <$> integer <|> splice
-          FloatPat -> accname $ Basic <$> float <|> splice
-          StringPat -> accname $ Basic <$> string <|> splice
-          TokenPat tok -> accname $ Basic <$> token tok <|> splice
+          IdentifierPat -> accname $ uncurry MidIdentifier <$> identifier <|> typedSplice MidSplice "id"
+          IntegerPat -> accname $ integer <|> typedSplice MidSplice "int"
+          FloatPat -> accname $ float <|> typedSplice MidSplice "float"
+          StringPat -> accname $ string <|> typedSplice MidSplice "str"
+          TokenPat tok -> accname $ token tok
           NamedPat n pat -> setName n . toProd pat
           SequencePat pats -> accname $
             modifyResult (uncurry Sequenced) . sequencePats pats
@@ -111,33 +114,31 @@ nextAssoc NeverThis = NeverThis
 this :: AssocState -> Bool
 this = (/= NeverThis)
 
-class AccNamed a r | a -> r where
-  accname :: a -> AssocState -> (AssocState, Production r (Maybe String, MidNode))
+class AccNamed a r s | a -> r s where
+  accname :: a -> AssocState -> (AssocState, Production r (Maybe String, MidNode s))
 
-instance AccNamed (Production r MidNode) r where
+instance AccNamed (Production r (MidNode s)) r s where
   accname prod acc = (acc,) $ (Nothing,) <$> prod
 
-instance AccNamed (Production r Node) r where
+instance AccNamed (Production r (Node s)) r s where
   accname prod acc = (acc,) $ (Nothing,) . MidNode <$> prod
 
-instance AccNamed (AssocState -> (AssocState, Production r MidNode)) r where
+instance AccNamed (AssocState -> (AssocState, Production r (MidNode s))) r s where
   accname f acc = modifyResult (Nothing,) $ f acc
 
-instance AccNamed (AssocState -> (AssocState, Production r Node)) r where
+instance AccNamed (AssocState -> (AssocState, Production r (Node s))) r s where
   accname f acc = modifyResult ((Nothing,) . MidNode) $ f acc
 
-integer :: Production r Token
-integer = satisfy (\case { IntegerTok{} -> True; _ -> False }) <?> "integer"
-float :: Production r Token
-float = satisfy (\case { FloatTok{} -> True; _ -> False }) <?> "float"
-string :: Production r Token
-string = satisfy (\case { StringTok{} -> True; _ -> False }) <?> "string"
+integer :: Production r (MidNode s)
+integer = Basic <$> satisfy (\case { IntegerTok{} -> True; _ -> False }) <?> "integer"
+float :: Production r (MidNode s)
+float = Basic <$> satisfy (\case { FloatTok{} -> True; _ -> False }) <?> "float"
+string :: Production r (MidNode s)
+string = Basic <$> satisfy (\case { StringTok{} -> True; _ -> False }) <?> "string"
 identifier :: Production r (Range, String)
 identifier = terminal (\case { (IdentifierTok r s) -> Just (r, s); _ -> Nothing }) <?> "identifier"
-token :: Token -> Production r Token
-token tok = satisfy (sameContent tok) <?> show tok
-splice :: Production r MidNode
-splice = satisfy (sameContent $ SymbolTok undefined "`") *> pure (uncurry SyntaxSplice) <*> identifier
+token :: Token -> Production r (MidNode s)
+token tok = Basic <$> satisfy (sameContent tok) <?> show tok
 
 boolean :: a -> a -> Bool -> a
 boolean a _ True = a

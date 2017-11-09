@@ -7,7 +7,7 @@ data Token = IdentifierTok Range String
            | FloatTok Range Double
            | SymbolTok Range String
            | StringTok Range String
-           deriving (Eq)
+           deriving (Eq, Ord)
 
 sameContent :: Token -> Token -> Bool
 sameContent (IdentifierTok _ t1) (IdentifierTok _ t2) = t1 == t2
@@ -48,6 +48,9 @@ data Range = Range { start :: !Position, end :: !Position }
 instance Show Range where
   show Range{start, end} = show (line start) ++ ":" ++ show (column start) ++ "-" ++ show (line end) ++ ":" ++ show (column end)
   show NoRange = "(nowhere)"
+
+instance Ord Range where
+  compare (Range s1 e1) (Range s2 e2) = compare s1 s2 `mappend` compare e1 e2
 
 instance Monoid Range where
   mempty = NoRange

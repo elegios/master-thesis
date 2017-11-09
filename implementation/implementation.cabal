@@ -38,8 +38,11 @@ library
                      , LambdaCase
                      , TupleSections
                      , DisambiguateRecordFields
+                     , MultiParamTypeClasses
+                     , FunctionalDependencies
                      , TypeSynonymInstances
                      , FlexibleInstances
+                     , GeneralizedNewtypeDeriving
   ghc-options:
     -fwarn-tabs
     -fwarn-unused-imports

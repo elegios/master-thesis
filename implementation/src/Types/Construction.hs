@@ -1,3 +1,5 @@
+{-# LANGUAGE EmptyDataDecls #-}
+
 module Types.Construction where
 
 import Control.Applicative ((<|>))
@@ -9,8 +11,8 @@ data Construction n = Construction
   , syntaxType :: String
   , syntax :: [SyntaxPattern]
   , extraData :: ExtraData
-  , implementation :: Implementation n }
-  deriving (Show)
+  , implementation :: Maybe (Splice n) }
+  deriving (Show, Eq)
 
 -- The Strings are the names of the various segments (argument names, so to speak)
 data SyntaxPattern = IdentifierPat
@@ -22,7 +24,7 @@ data SyntaxPattern = IdentifierPat
                    | RepeatPat SyntaxPattern Repeat
                    | SequencePat [SyntaxPattern]
                    | NamedPat String SyntaxPattern
-                   deriving (Show)
+                   deriving (Show, Eq)
 
 data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq)
 
@@ -32,7 +34,7 @@ data ExtraData = ExtraData
   , beforeBindings :: [String]
   , afterBindings :: [String]
   , bindingData :: [([String], [String])] }
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance Monoid ExtraData where
   mempty = ExtraData Nothing Nothing [] [] []
@@ -43,10 +45,19 @@ instance Monoid ExtraData where
               (mappend ba1 ba2)
               (mappend bm1 bm2)
 
-data AssocData = AssocLeft | AssocRight deriving (Show)
+data AssocData = AssocLeft | AssocRight deriving (Show, Eq)
 
-data Implementation n = Syntax n
-                      | Builtin
-                      | Simple String
-                      | Fold String String n (Implementation n)
-                      deriving (Show)
+data FoldDir = FoldLeft | FoldRight deriving (Eq, Show)
+data FoldAcc = FoldFull String | FoldDestructure [String] deriving (Show, Eq)
+
+data NoSplice n
+data Splice n = Syntax n
+              | Simple String
+              | Fold FoldDir String FoldAcc String (Splice n) (Splice n)
+              | Fold1 FoldDir String FoldAcc String (Splice n)
+              deriving (Show, Eq)
+
+instance Show (NoSplice n) where
+  show _ = "NoSplice"
+instance Eq (NoSplice n) where
+  _ == _ = undefined

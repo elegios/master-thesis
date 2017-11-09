@@ -15,7 +15,7 @@ import qualified Data.Set as S
 import Control.Monad.Tardis (Tardis, evalTardis, getsPast, getFuture, modifyForwards, modifyBackwards, sendPast)
 
 import Types.Lexer (Range)
-import Types.Construction (Construction(extraData), ExtraData(ExtraData, bindingData, beforeBindings, afterBindings))
+import Types.Construction (Construction(extraData), ExtraData(ExtraData, bindingData, beforeBindings, afterBindings), NoSplice)
 import Types.Ast
 
 {-
@@ -46,7 +46,9 @@ data Result e a = Data a | Error [e]
 
 type Res = Result String
 
-resolve :: M.Map String (Construction n) -> NodeI String -> Result String (NodeI GenSym)
+type Node i = FixNode NoSplice i
+
+resolve :: M.Map String (Construction n) -> Node String -> Result String (Node GenSym)
 resolve constructions n = evalTardis (res n) (M.empty, initial)
   where
     initial = ResolverState
@@ -55,10 +57,14 @@ resolve constructions n = evalTardis (res n) (M.empty, initial)
       , lookupTable = M.empty
       , definedInThisScope = M.empty }
 
-class Resolvable r where
-  res :: r String -> Resolver (Res (r GenSym))
+class Resolvable r r' | r -> r' where
+  res :: r String -> Resolver (Res (r' GenSym))
 
-instance Resolvable NodeI where
+instance Resolvable (FixNode NoSplice) (FixNode NoSplice) where
+  res (FixNode n) = fmap FixNode <$> res n
+
+instance Resolvable (NodeI (NoSplice (Node String))) (NodeI (NoSplice (Node GenSym))) where
+  res SyntaxSplice{} = return . pure $ SyntaxSplice undefined
   res n@Node{name, children} = fmap (\cs -> n { children = cs }) <$> do
     ExtraData{beforeBindings, afterBindings, bindingData} <- getsPast $ (M.! name) . extra
     let mChildren = M.fromList children
@@ -87,10 +93,10 @@ instance Resolvable NodeI where
              sequenceA_ scopeDefs *>
              sequenceA children'
 
-instance Resolvable MidNodeI where
+instance Resolvable (MidNodeI (NoSplice (Node String))) (MidNodeI (NoSplice (Node GenSym))) where
   res (MidNode n) = fmap MidNode <$> res n
   res (MidIdentifier r i) = fmap (MidIdentifier r) <$> lookupBinding i r
-  res (SyntaxSplice r i) = return . pure $ SyntaxSplice r i
+  res (MidSplice _) = return . pure $ MidSplice undefined
   res (Basic t) = return . pure $ Basic t
   res (Repeated rep cs) = fmap (Repeated rep) . sequenceA
     <$> mapM res cs

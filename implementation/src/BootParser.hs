@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, Rank2Types #-}
+{-# LANGUAGE RecursiveDo, Rank2Types, ScopedTypeVariables #-}
 
 module BootParser (parseConstructions) where
 
@@ -8,16 +8,43 @@ import Text.Earley
 
 import Lexer (tokenize)
 import Types.Lexer (sameContent, Token(..))
-import Types.Construction
+import Types.Construction hiding (implementation)
 
 type Production r a = Prod r String Token a
 
-parseConstructions :: (forall r. Grammar r (Production r n)) -> [Token] -> ([[Construction n]], Report String [Token])
+parseConstructions :: (forall r. Production r (Splice n) -> Grammar r (Production r n)) -> [Token] -> ([[Construction n]], Report String [Token])
 parseConstructions impl = fullParses $ parser constructions
   where
-    constructions = impl >>= \impl' -> many <$> construction impl'
+    constructions = implementation impl >>= fmap many . construction
 
-construction :: Production r n -> Grammar r (Production r (Construction n))
+implementation :: (Production r (Splice n) -> Grammar r (Production r n)) -> Grammar r (Production r (Maybe (Splice n)))
+implementation impl = mdo
+  impl' <- impl splice
+  let common = lit "(" *> inParens <* lit ")"
+           <|> Syntax <$> impl'
+           <|> terminal fold <*> identifier <*>
+               acc <*> identifier <*
+               lit "(" <*> inParens <* lit ")" <*>
+               inParens
+           <|> terminal fold1 <*> identifier <*>
+               acc <*> identifier <*
+               lit "(" <*> inParens <* lit ")"
+  inParens <- rule $ common <|> Simple <$> identifier
+  splice <- rule $ lit "(" *> inParens <* lit ")"
+  rule $ Just <$> common <|> simpleOrBuiltin <$> identifier
+  where
+    fold (IdentifierTok _ "foldl") = Just $ Fold FoldLeft
+    fold (IdentifierTok _ "foldr") = Just $ Fold FoldRight
+    fold _ = Nothing
+    fold1 (IdentifierTok _ "foldl1") = Just $ Fold1 FoldLeft
+    fold1 (IdentifierTok _ "foldr1") = Just $ Fold1 FoldRight
+    fold1 _ = Nothing
+    simpleOrBuiltin "builtin" = Nothing
+    simpleOrBuiltin i = Just $ Simple i
+    acc = FoldFull <$> identifier
+      <|> lit "(" *> pure FoldDestructure <*> commaIds <* lit ")"
+
+construction :: Production r (Maybe (Splice n)) -> Grammar r (Production r (Construction n))
 construction impl = mdo
   syntaxPs <- syntaxPatterns
   extraSpec <- rule $ lit "#" *> lit "assoc" *> terminal assoc
@@ -28,20 +55,13 @@ construction impl = mdo
                   <|> lit "#" *> lit "scope" *> pure (bind . ([],)) <*> commaIds
   binding <- rule $ (,) <$> commaIds <* lit "in"
                         <* lit "scope" <*> commaIds
-  implementation <- rule $ Syntax <$> impl
-                       <|> lit "(" *> implementation <* lit ")"
-                       <|> simpleOrBuiltin <$> identifier
-                       <|> lit "fold" *> pure Fold <*>
-                           identifier <*> identifier <*>
-                           impl <*> implementation
   rule $ lit "syntax" *> pure Construction <*>
          identifier <* lit ":" <*>
          identifier <* lit "=" <*>
          syntaxPs <* lit "{" <*>
          (mconcat <$> many extraSpec) <*>
-         implementation <* lit "}"
+         impl <* lit "}"
   where
-    commaIds = (:) <$> identifier <*> many (lit "," *> identifier)
     bind bs = mempty { bindingData = [bs] }
     before bs = mempty { beforeBindings = bs }
     after bs = mempty { afterBindings = bs }
@@ -49,8 +69,6 @@ construction impl = mdo
     assoc (IdentifierTok _ "left") = Just $ mempty { assocData = Just AssocLeft }
     assoc (IdentifierTok _ "right") = Just $ mempty { assocData = Just AssocRight }
     assoc _ = Nothing
-    simpleOrBuiltin "builtin" = Builtin
-    simpleOrBuiltin i = Simple i
 
 syntaxPatterns :: Grammar r (Prod r String Token [SyntaxPattern])
 syntaxPatterns = mdo
@@ -74,6 +92,9 @@ syntaxPatterns = mdo
     toSimplePat "Float" = FloatPat
     toSimplePat "String" = StringPat
     toSimplePat ty = SyntaxPat ty
+
+commaIds :: Production r [String]
+commaIds = (:) <$> identifier <*> many (lit "," *> identifier)
 
 identifier :: Prod r String Token String
 identifier = terminal test <?> "identifier"
@@ -99,3 +120,8 @@ lit str = satisfy (sameContent patternTok) <?> str
     patternTok = case tokenize str of
       [tok] -> tok
       _ -> error "compiler error: expected single token"
+
+tok :: String -> Token
+tok str = case tokenize str of
+  [t] -> t
+  _ -> error "compiler error: expected single token"

@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE Rank2Types, PartialTypeSignatures #-}
 
 module Experimenting where
 
@@ -14,7 +14,7 @@ import System.IO (hGetContents, withFile, IOMode(ReadMode))
 
 import qualified Data.Map as M
 
-import Text.Earley (Grammar, Prod, Report)
+import Text.Earley (Grammar, Prod)
 
 import Lexer
 import BootParser
@@ -25,26 +25,28 @@ import Types.Ast
 import Ambiguity
 import Binding
 
-type Constr = Construction (NodeI String)
+type Constr s = Construction (FixNode s String)
 type Production r a = Prod r String Token a
 
--- TODO: reconnect all the things, add dependency resolution
-
-noImpl :: Grammar r (Production r a)
-noImpl = return empty
+noImpl :: Production r b -> Grammar r (Production r a)
+noImpl _ = return empty
 
 main :: IO ()
 main = do
   [startSym, coreGrammar, grammar, source] <- getArgs
+  putStrLn "Parsing coreGrammar"
   coreConstructions <- getConstructions noImpl coreGrammar
+  putStrLn "Parsing grammar"
   constructions <- getConstructions (implementationGrammar coreConstructions) grammar
+  putStrLn "Parsing source"
   mNode <- ambiguityParse constructions startSym source
+  putStrLn "Resolving source"
   case resolve constructions <$> mNode of
     Nothing -> return ()
     Just (Data res) -> putStrLn $ prettyShow res
     Just (Error es) -> putStrLn "Binding errors:" >> mapM_ (putStrLn . show) es
 
-ambiguityParse :: M.Map String Constr -> String -> String -> IO (Maybe (NodeI String))
+ambiguityParse :: M.Map String (Constr _) -> String -> String -> IO (Maybe (FixNode _ String))
 ambiguityParse constructions startSym source = do
   (results, report) <- parseFile parser source
   putStrLn $ show report
@@ -61,7 +63,7 @@ ambiguityParse constructions startSym source = do
     parseFile parser source = withFile source ReadMode $ \f ->
       hGetContents f >>= evaluate . parser . tokenize . force
 
-getConstructions :: (forall r. Grammar r (Production r (NodeI String))) -> FilePath -> IO (M.Map String Constr)
+getConstructions :: (forall r. Production r (Splice (FixNode _ String)) -> Grammar r (Production r (FixNode _ String))) -> FilePath -> IO (M.Map String (Constr _))
 getConstructions impl path = withFile path ReadMode $ \f -> do
   (parses, rep) <- parseConstructions impl . tokenize . force <$> hGetContents f
   case parses of
@@ -76,10 +78,6 @@ fullParse = do
   interact $ prettier . parser . tokenize
   where
     prettier (results, report) = unlines $ show report : (show <$> results)
-
-printConstructions :: IO ()
-printConstructions = interact $
-  (show :: ([[Constr]], Report String [Token]) -> String) . parseConstructions noImpl . tokenize
 
 printTokens :: IO ()
 printTokens = interact $ unlines . map show . tokenize

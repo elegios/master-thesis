@@ -1,6 +1,9 @@
+{-# LANGUAGE StandaloneDeriving, FlexibleContexts, UndecidableInstances #-}
+
 module Types.Ast
 ( NodeI(..)
 , MidNodeI(..)
+, FixNode(..)
 , pretty
 , prettyShow
 ) where
@@ -14,61 +17,71 @@ import qualified Text.PrettyPrint as P
 import Types.Construction (Repeat(..))
 import Types.Lexer (Ranged(..), Range, Token)
 
-data NodeI i = Node
+newtype FixNode s i = FixNode { unSplice :: NodeI (s (FixNode s i)) i} deriving (Ranged)
+deriving instance (Show (s (FixNode s i)), Show i) => Show (FixNode s i)
+deriving instance (Eq (s (FixNode s i)), Eq i) => Eq (FixNode s i)
+data NodeI s i = Node
   { name :: String
-  , children :: [(String, MidNodeI i)]
+  , children :: [(String, MidNodeI s i)]
   , nodeRange :: Range }
+  | SyntaxSplice s
+  deriving (Eq)
 
-data MidNodeI i = MidNode (NodeI i)
-                | MidIdentifier Range i
-                | SyntaxSplice Range String
-                | Basic Token
-                | Repeated Repeat [MidNodeI i]
-                | Sequenced Range [(String, MidNodeI i)]
+data MidNodeI s i = MidNode (NodeI s i)
+                  | MidIdentifier Range i
+                  | MidSplice s
+                  | Basic Token
+                  | Repeated Repeat [MidNodeI s i]
+                  | Sequenced Range [(String, MidNodeI s i)]
+                  deriving (Eq)
 
-instance Show i => Show (NodeI i) where
+instance (Show s, Show i) => Show (NodeI s i) where
   show Node{name, children, nodeRange} = name ++ "{" ++ show nodeRange ++ "}" ++ showNamed children
+  show (SyntaxSplice s) = "splice(" ++ show s ++ ")"
 
-instance Show i => Show (MidNodeI i) where
+instance (Show s, Show i) => Show (MidNodeI s i) where
   show (MidNode n) = show n
   show (MidIdentifier _ i) = "ident(" ++ show i ++ ")"
-  show (SyntaxSplice _ i) = "splice(" ++ show i ++ ")"
+  show (MidSplice s) = "splice(" ++ show s ++ ")"
   show (Basic t) = show t
   show (Repeated _ mids) = "[" ++ intercalate ", " (show <$> mids) ++ "]"
   show (Sequenced r named) = "{" ++ show r ++ "}" ++ showNamed named
 
-instance Ranged (NodeI i) where
-  range = nodeRange
+instance Ranged (NodeI s i) where
+  range Node{nodeRange} = nodeRange
+  range (SyntaxSplice _) = mempty
 
-instance Ranged (MidNodeI i) where
+instance Ranged (MidNodeI s i) where
   range (MidNode n) = range n
   range (MidIdentifier r _) = r
-  range (SyntaxSplice r _) = r
+  range (MidSplice _) = mempty
   range (Basic t) = range t
   range (Repeated _ ns) = mconcat $ range <$> ns
   range (Sequenced r _) = r
 
-showNamed :: Show i => [(String, MidNodeI i)] -> String
+showNamed :: (Show s, Show i) => [(String, MidNodeI s i)] -> String
 showNamed named = "(" ++ intercalate ", " (arg <$> named) ++ ")"
   where
     arg (name, node) = name ++ " = " ++ show node
 
-pretty :: Show i => NodeI i -> P.Doc
-pretty (Node n cs _) = P.sep [P.text n, prettyNamed cs]
+pretty :: (Show (s (FixNode s i)), Show i) => FixNode s i -> P.Doc
+pretty (FixNode n) = case n of
+  Node n cs _ -> P.sep [P.text n, prettyNamed cs]
+  SyntaxSplice _ -> P.text $ show n
   where
     prettyNamed cs = cs
       & fmap (\(n, mid) -> P.text n <+> P.equals <+> prettyMid mid)
       & P.punctuate P.comma
       & P.vcat & P.parens
     namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid
-    prettyMid (MidNode n) = pretty n
+    prettyMid (MidNode n) = pretty $ FixNode n
     prettyMid i@MidIdentifier{} = P.text $ show i
-    prettyMid i@SyntaxSplice{} = P.text $ show i
+    prettyMid s@MidSplice{} = P.text $ show s
     prettyMid (Basic t) = P.text $ show t
     prettyMid (Repeated _ mids) = prettyMid <$> mids
       & P.punctuate P.comma
       & P.sep & P.brackets
     prettyMid (Sequenced _ named) = prettyNamed named
 
-prettyShow :: Show i => NodeI i -> String
+prettyShow :: (Show (s (FixNode s i)), Show i) => FixNode s i -> String
 prettyShow = P.render . pretty
