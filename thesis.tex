@@ -4,6 +4,8 @@
 
 \usepackage{minted}
 
+\usepackage{syntax}
+
 \usepackage{csquotes} % Recommended by biblatex
 \usepackage{biblatex}
 \addbibresource{references.bib} % The file containing our references, in BibTeX format
@@ -128,11 +130,96 @@ This thesis contributes the following:
   \item An implementation of a non-trivial subset of OCaml (section \ref{sec:functional-eval}) to evaluate the method's suitability in modeling a typical functional language, focusing on pattern matching.
 \end{itemize}
 
-\chapter{Design}
+\chapter{Background}
 
-\section{Design Goals}
+\section{Context Free Grammars}
+
+\chapter{Syntax Constructions}
+
+This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and freedoms. Section~\ref{sec:design-goals} will reiterate and clarify the goals of the design to guide the later sections (\ref{sec:constructions-and-types} through \ref{sec:design-implementation}), which will build the constructions one piece at a time.
+
+\section{Design Goals} \label{sec:design-goals}
+
+The goals that guide the design of syntax constructions can be found below. Note that not all of these are fully met.
+
+\begin{description}
+  \item[Tower of languages:] it should be possible to define new languages in terms of other languages, very much akin to Lisp tradition.
+  \item[Syntactical freedom:] syntax constructions should be able to specify new syntax, ideally with no constraints.
+  \item[Abstraction preservation:] no usage of a syntax construction should expose its implementation to an end user.
+  \item[Good error messages:] improper use or implementation of syntax constructions should present the user with understandable error messages.
+  \item[Composition through cherrypicking:] it should be possible to reuse individual features of languages, i.e. the unit of composition must be smaller than a full language.
+  \item[Reasoning without context:] Expanding upon the previous point, a syntax construction should be as self contained as possible to permit reasoning about it without full awareness of its context.
+\end{description}
+
+\section{Constructions and Types} \label{sec:constructions-and-types}
+
+Syntax constructions center around two concepts, the constructions themselves and their types. A syntax construction is essentially a macro with some additional features and guarantees, while a syntax type is something along the lines of \mintinline{haskell}{Expression}, \mintinline{haskell}{Statement} or \mintinline{haskell}{Pattern}.
+
+A singular syntax construction forms the unit of composition; they can be included or excluded in a language on an individual basis.
 
 \section{Syntax} \label{sec:design-syntax}
+
+This section will use the definition of a simple arithmetic language as a running example (see below). The language contains addition, multiplication, grouping through parenthesis, integer literals and vector literals.
+
+\begin{minted}{text}
+syntax type Expression
+
+syntax addition:Expression =
+  a:Expression "+" b:Expression {
+    #prec 11
+    #assoc left
+    <...>
+}
+
+syntax multiplication:Expression =
+  a:Expression "*" b:Expression {
+    #prec 12
+    #assoc left
+    <...>
+}
+
+syntax parens:Expression = "(" e:Expression ")" {
+    <...>
+}
+
+syntax intLit:Expression = i:Integer {
+    <...>
+}
+
+syntax vecLit:Expression =
+  "[" e:Expression ("," es:Expression)* "]" {
+    <...>
+}
+\end{minted}
+
+Note that the implementation of each syntax construction is omitted and will instead be discussed in section~\ref{sec:design-implementation}.
+
+Parsing consists of two steps: lexing and the actual parsing. The former uses a fixed lexer that produces five kinds of tokens: integers, real numbers, strings, identifiers and symbols. The lexical syntax of these are chosen to align as well as possible with the syntax of common programming languages, which works well enough in most cases. It does however represent a clear area of possible improvement.
+
+Note also that the lexer produces no keywords. Instead any syntax construction that requires a keyword is expected to include a quoted string (e.g. \mintinline{text}{"for"}) which will match a specific token (e.g. an identifier with the text ''for'').
+
+The actual parsing is guided by the syntax constructions. If we for a moment disregard precedence and associativity there is a very clear connection between syntax constructions and a context free grammar: each construction is a production, while each syntax type is a non-terminal. To include precedence and associativity we do a standard transformation and introduce an extra non-terminal for each precedence level, producing the following grammar:
+
+\setlength{\grammarindent}{8em}
+\begin{grammar}
+<Expression> ::= <Expression> '+' <Expression1>
+  \alt <Expression1>
+
+<Expression1> ::= <Expression1> '*' <Expression2>
+  \alt <Expression2>
+
+<Expression2> ::= '(' <Expression> ')'
+  \alt <Integer>
+  \alt '[' <Expression> (',' <Expression>)* ']'
+\end{grammar}
+
+\synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vecLit} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences.
+
+The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple syntax constructions to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989}.
+
+\subsection{Ambiguity}
+
+
 
 \section{Bindings} \label{sec:design-bindings}
 
@@ -150,7 +237,7 @@ This thesis contributes the following:
 
 \chapter{Related Work}
 
-The related work is separated roughly based on the degree to which they solve the two problems introduced in section \ref{introduction}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
+The related work is separated roughly based on the degree to which they solve the two problems introduced in section~\ref{sec:introduction}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
 
 \section{Abstraction Solutions} \label{sec:abstraction-solutions}
 
