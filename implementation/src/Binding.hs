@@ -21,89 +21,6 @@ import Types.Paths
 import Types.ResolvedConstruction
 import Types.Result
 
-{-
-While staying within a Node (instance) maintain a path
-When reaching leaf:
-- Identifier
-  If this path exists as a binder, find scope (uses path), add to scope (Map Symbol GenSym) forward or backward or vertical (how?)
-  if not binding, find scope (uses path) lookup forward, backward and vertically (how?)
-- Instance
-  Recurse (reset path etc), ensure vertical binds follow along (how?)
--}
-
-{-
-All leaf names in a scope declaration must be disjoint
-(i.e. all scopes are disjoint, the path in the parent does not
-contain its child scopes)
-Thus a scope declaration becomes a mapping from paths to the scope
-that contains them
-The chain of scopes in a construction cannot refer to the actual
-context of the instance. An instance must know if something was
-defined in the scope the instance resides in or one or more above,
-since in the former case we may need to report an error, while
-the latter case will always be shadowed.
-Special casing, pass two environments to an instance, far definitions
-and close definitions. When checking RootScope we check those two,
-semi-implicitly, treating the close as RootScope (which we may have
-added to)
-This passing will be done in a state monad though, once forward,
-once reverse, and once vertically. Don't really want 6 parameters?
-
-The direction from the outside does not matter, i.e. outside could
-actually be merely one map for close definitions, one for far
-definitions. Implementation wise they just get added arbitrarily
-to one of the directions, which *should* not matter.
-
-As for error reporting. All these checkings are in same scope, not through parent
-- define after: check if in scope from before
-- define before: check if in scope from before or after (shortcutting or)
-- define vertically: (?) Technically needs to check for every leaf it touches.
-  Could alternatively compute paths and check for disjointness with other definitions with same symbol
-
-when a vertical thing comes into scope, if the area is in the same scope
-a new horizontal thing may be added inside it or from before/after.
-If it itstead is in a lower scope it must come from before/after.
-
-I don't really have a better solution atm then to check for each
-SinglePath where the vertical thing is in scope, or compute full
-affected paths for all definitions of a given symbol from the same
-scope and check for disjointedness.
-
-Vertical scoping can be pre-computed and will thus be available when
-traversing the leaves. Vertical to vertical conflict then becomes
-a disjointedness test if we have several for the same symbol and scope.
-
-When computing a define before or after we have its scope as a
-TreEndPath plus a MultiPath instance. It should be fairly simple
-to check if that area (i.e. that particular scope, but only after f.ex.)
-overlaps with anything vertical
-
-!!!!!
-Horizontal bindings are only introduced at the edges of an instance,
-never inside (except on the edge of a leaf instance). This means that
-a vertical binding will conflict in one of two ways:
-- an inner instance defines something horizontal, which will
-  see the vertical binding (as a horizontal binding at that point)
-  and thus error
-- something outside the current instance defined the same symbol in
-  what is now CloseScope, which we can either conflict with or shadow
-  depending on the scope of the vertical binding
-
-Thus vertical checking is checking versus other verticals, and if
-we're defining in CloseScope check with beforeBindings and afterBindings,
-otherwise do nothing as any error would be detected by horizontal
-checking later
-
-!!!!!
-The above draws too strong of a conclusion. Consider an ast with two
-nodes, where "bind x in b" and "x<-c".
-(x b c)
-x from the vertical bind is not in scope when resolving c, but the
-definition from c does overlap with the vertical binding.
--}
-
--- TODO: names in constructions must refer to individual items, not collections, changing the grammar is probably the easiest way to do this
--- TODO: name res in constructions
 -- TODO: #bind x in body, scope(x) must be reachable from scope(body)
 
 type Node i = NodeI (NoSplice (FixNode NoSplice i)) i
@@ -356,7 +273,7 @@ instance Gen String where
 instance Gen GenSym where
   getString (GenSym s _) = s
 
--- Result, helpers and instances
+-- helpers
 
 multiInsert :: (Ord k1, Ord k2) => k1 -> k2 -> a -> M.Map k1 (M.Map k2 a) -> M.Map k1 (M.Map k2 a)
 multiInsert k1 k2 a = M.insert k2 a `alter` k1
