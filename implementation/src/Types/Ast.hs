@@ -22,7 +22,7 @@ deriving instance (Show (s (FixNode s i)), Show i) => Show (FixNode s i)
 deriving instance (Eq (s (FixNode s i)), Eq i) => Eq (FixNode s i)
 data NodeI s i = Node
   { name :: String
-  , children :: [(String, MidNodeI s i)]
+  , children :: [MidNodeI s i]
   , nodeRange :: Range }
   | SyntaxSplice s
   deriving (Eq)
@@ -32,7 +32,7 @@ data MidNodeI s i = MidNode (NodeI s i)
                   | MidSplice s
                   | Basic Token
                   | Repeated Repeat [MidNodeI s i]
-                  | Sequenced Range [(String, MidNodeI s i)]
+                  | Sequenced Range [MidNodeI s i]
                   deriving (Eq)
 
 instance (Show s, Show i) => Show (NodeI s i) where
@@ -59,18 +59,18 @@ instance Ranged (MidNodeI s i) where
   range (Repeated _ ns) = mconcat $ range <$> ns
   range (Sequenced r _) = r
 
-showNamed :: (Show s, Show i) => [(String, MidNodeI s i)] -> String
-showNamed named = "(" ++ intercalate ", " (arg <$> named) ++ ")"
-  where
-    arg (name, node) = name ++ " = " ++ show node
+-- TODO: not an accurate name at this point
+showNamed :: (Show s, Show i) => [MidNodeI s i] -> String
+showNamed named = "(" ++ intercalate ", " (show <$> named) ++ ")"
 
 pretty :: (Show (s (FixNode s i)), Show i) => FixNode s i -> P.Doc
 pretty (FixNode n) = case n of
   Node n cs _ -> P.sep [P.text n, prettyNamed cs]
   SyntaxSplice _ -> P.text $ show n
   where
+    -- TODO: not an accurate name at this point
     prettyNamed cs = cs
-      & fmap (\(n, mid) -> P.text n <+> P.equals <+> prettyMid mid)
+      & fmap prettyMid
       & P.punctuate P.comma
       & P.vcat & P.parens
     namedPretty (n, mid) = P.text n <+> P.equals <+> prettyMid mid

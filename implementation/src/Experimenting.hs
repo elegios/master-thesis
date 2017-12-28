@@ -22,7 +22,10 @@ import GrammarGenerator
 import Types.Lexer (Token)
 import Types.Construction
 import Types.Ast
+import Types.Result
+import Types.ResolvedConstruction
 import Ambiguity
+import ConstructionResolution
 import Binding
 
 type Constr s = Construction (FixNode s String)
@@ -40,8 +43,11 @@ main = do
   constructions <- getConstructions (implementationGrammar coreConstructions) grammar
   putStrLn "Parsing source"
   mNode <- ambiguityParse constructions startSym source
+  putStrLn "Resolving Constructions"
+  resolvedConstructions <- resolveConstructions constructions
+  forM_ (M.toList resolvedConstructions) $ putStrLn . show
   putStrLn "Resolving source"
-  case resolve constructions <$> mNode of
+  case resolveNames resolvedConstructions <$> mNode of
     Nothing -> return ()
     Just (Data res) -> putStrLn $ prettyShow res
     Just (Error es) -> putStrLn "Binding errors:" >> mapM_ (putStrLn . show) es
@@ -62,6 +68,15 @@ ambiguityParse constructions startSym source = do
     parser = parseWithGrammar startSym constructions
     parseFile parser source = withFile source ReadMode $ \f ->
       hGetContents f >>= evaluate . parser . tokenize . force
+
+resolveConstructions :: M.Map String (Constr _) -> IO (M.Map String ResolvedConstruction)
+resolveConstructions constructions =
+  case sequenceA $ ConstructionResolution.resolve <$> constructions of
+    Data resolvedConstructions -> return resolvedConstructions
+    Error es -> do
+      putStrLn "Construction resolution errors: "
+      mapM_ (putStrLn . show) es
+      error $ "Cannot continue"
 
 getConstructions :: (forall r. Production r (Splice (FixNode _ String)) -> Grammar r (Production r (FixNode _ String))) -> FilePath -> IO (M.Map String (Constr _))
 getConstructions impl path = withFile path ReadMode $ \f -> do

@@ -22,7 +22,11 @@ library
                      , GrammarGenerator
                      , Types.Ast
                      , Ambiguity
+                     , ConstructionResolution
                      , Binding
+                     , Types.ResolvedConstruction
+                     , Types.Paths
+                     , Types.Result
                      , Experimenting
   build-depends:       base >= 4.7 && < 5
                      , array
@@ -37,7 +41,7 @@ library
   default-extensions:  NamedFieldPuns
                      , LambdaCase
                      , TupleSections
-                     , DisambiguateRecordFields
+                     , DuplicateRecordFields
                      , MultiParamTypeClasses
                      , FunctionalDependencies
                      , TypeSynonymInstances

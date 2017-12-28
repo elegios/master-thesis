@@ -14,7 +14,7 @@ ambiguities :: [Node s] -> [(Range, [[SimpleRepr]])]
 ambiguities nodes = ambig $ midWrap <$> nodes
   where
     r = range nodes
-    midWrap (FixNode n) = MidNode $ Node "*top*" [("*content*", MidNode n)] r
+    midWrap (FixNode n) = MidNode $ Node "*top*" [MidNode n] r
 
 -- invariant: all items in the argument list share a SimpleRepr
 ambig :: [MidNode s] -> [(Range, [[SimpleRepr]])]
@@ -56,13 +56,13 @@ keepOnly (False:bs) (_:as) = keepOnly bs as
 keepOnly _ _ = []
 
 children :: MidNode s -> [MidNode s]
-children (MidNode (Node _ children _)) = snd <$> children
+children (MidNode (Node _ children _)) = children
 children (MidNode (SyntaxSplice _)) = []
 children MidIdentifier{} = []
 children MidSplice{} = []
 children Basic{} = []
 children (Repeated _ cs) = cs
-children (Sequenced _ cs) = snd <$> cs
+children (Sequenced _ cs) = cs
 
 data SimpleRepr = SimpleRepr Tag Range deriving (Show, Eq)
 data Tag = NodeTag String

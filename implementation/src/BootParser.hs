@@ -2,20 +2,21 @@
 
 module BootParser (parseConstructions) where
 
-import Control.Applicative ((<|>), some, many)
+import Data.Either (partitionEithers)
+import Control.Applicative ((<|>), some, many, optional)
 
 import Text.Earley
 
 import Lexer (tokenize)
 import Types.Lexer (sameContent, Token(..))
-import Types.Construction hiding (implementation)
+import Types.Construction
 
 type Production r a = Prod r String Token a
 
 parseConstructions :: (forall r. Production r (Splice n) -> Grammar r (Production r n)) -> [Token] -> ([[Construction n]], Report String [Token])
 parseConstructions impl = fullParses $ parser constructions
   where
-    constructions = implementation impl >>= fmap many . construction
+    constructions = BootParser.implementation impl >>= fmap many . construction
 
 implementation :: (Production r (Splice n) -> Grammar r (Production r n)) -> Grammar r (Production r (Maybe (Splice n)))
 implementation impl = mdo
@@ -52,9 +53,10 @@ construction impl = mdo
                   <|> lit "#" *> lit "bind" *> pure before <*> commaIds <* lit "before"
                   <|> lit "#" *> lit "bind" *> pure after <*> commaIds <* lit "after"
                   <|> lit "#" *> lit "bind" *> pure bind <*> binding
-                  <|> lit "#" *> lit "scope" *> pure (bind . ([],)) <*> commaIds
-  binding <- rule $ (,) <$> commaIds <* lit "in"
-                        <* lit "scope" <*> commaIds
+                  <|> lit "#" *> lit "scope" *> pure scopeToExtra <*> scope
+  binding <- rule $ (,) <$> commaIds <* lit "in" <*> commaIds
+  scope <- rule $ constructScope <$> optional (identifier <* lit ":") <* lit "(" <*>
+                  many (Left <$> identifier <|> Right <$> scope) <* lit ")"
   rule $ lit "syntax" *> pure Construction <*>
          identifier <* lit ":" <*>
          identifier <* lit "=" <*>
@@ -62,6 +64,8 @@ construction impl = mdo
          (mconcat <$> many extraSpec) <*>
          impl <* lit "}"
   where
+    constructScope mRepMp subs = ScopeData mRepMp `uncurry` partitionEithers subs
+    scopeToExtra scd = mempty { scopeData = [scd] }
     bind bs = mempty { bindingData = [bs] }
     before bs = mempty { beforeBindings = bs }
     after bs = mempty { afterBindings = bs }
@@ -75,9 +79,9 @@ syntaxPatterns = mdo
   unnamed <- rule $ toSimplePat <$> identifier
                 <|> toToken <$> string
                 <|> lit "(" *> pure SequencePat <*> some (named <|> repeated) <* lit ")"
-  repeated <- rule $ RepeatPat <$> unnamed <*> terminal repeat
-                 <|> unnamed
-  named <- rule $ NamedPat <$> identifier <* lit ":" <*> repeated
+  named <- rule $ NamedPat <$> identifier <* lit ":" <*> unnamed
+              <|> unnamed
+  repeated <- rule $ RepeatPat <$> named <*> terminal repeat
   return . some $ named <|> repeated
   where
     toToken str = case tokenize str of
