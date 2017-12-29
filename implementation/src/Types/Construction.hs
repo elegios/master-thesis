@@ -52,13 +52,13 @@ instance Monoid ExtraData where
 data AssocData = AssocLeft | AssocRight deriving (Show, Eq)
 
 data FoldDir = FoldLeft | FoldRight deriving (Eq, Show)
-data FoldAcc = FoldFull String | FoldDestructure [String] deriving (Show, Eq)
+data FoldItem = FoldFull String | FoldDestructure [String] deriving (Show, Eq)
 
 data NoSplice n
 data Splice n = Syntax n
               | Simple String
-              | Fold FoldDir String FoldAcc String (Splice n) (Splice n)
-              | Fold1 FoldDir String FoldAcc String (Splice n)
+              | Fold FoldDir String FoldItem String (Splice n) (Splice n)
+              | Fold1 FoldDir String FoldItem String (Splice n)
               deriving (Show, Eq)
 
 instance Show (NoSplice n) where

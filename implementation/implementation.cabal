@@ -27,11 +27,13 @@ library
                      , Types.ResolvedConstruction
                      , Types.Paths
                      , Types.Result
+                     , Types.GenSym
                      , Experimenting
   build-depends:       base >= 4.7 && < 5
                      , array
                      , containers >= 0.5.8.0
                      , pretty
+                     , mtl
                      , tardis
                      , Earley
                      , deepseq

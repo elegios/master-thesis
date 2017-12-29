@@ -1,7 +1,7 @@
 module Types.Result where
 
 ok :: ResultT e ()
-ok = pure ()
+ok = Data ()
 
 data ResultT e a = Data a | Error e
 

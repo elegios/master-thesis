@@ -20,6 +20,7 @@ import Types.Ast
 import Types.Paths
 import Types.ResolvedConstruction
 import Types.Result
+import Types.GenSym
 
 -- TODO: #bind x in body, scope(x) must be reachable from scope(body)
 
@@ -56,11 +57,6 @@ replaceLeaves SyntaxSplice{} _ = error $ "Compiler error: Unexpected splice in r
 data Error = RedefError String Range Range
            | UndefError String Range
            deriving (Show) -- TODO: probably use a nicer instance for Show, or some other typeclass
-
-data GenSym = GenSym String Int deriving (Eq, Ord)
-
-instance Show GenSym where
-  show (GenSym s i) = s ++ "#" ++ show i
 
 type HorizontalBindings pre = M.Map ScopeInstance (M.Map pre (Range, GenSym))
 type VerticalBindings pre = M.Map ScopeInstance (M.Map pre [(TreePath, (Range, GenSym))])

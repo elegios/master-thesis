@@ -7,6 +7,7 @@ module Types.Paths
 , TreePath -- Merge of any two paths
 , singlePath
 , multiPath
+, fromMultiPath
 , calculatePathInstance
 , limitPathInstance
 , prepend
@@ -40,6 +41,9 @@ instance Show SinglePath where
 instance Show MultiPath where
   show (MultiPath tp) = show $ toListUnsafe tp
 
+fromMultiPath :: MultiPath -> [Maybe Int]
+fromMultiPath = toListUnsafe . view
+
 singlePath :: [Int] -> SinglePath
 singlePath = foldr prepend here
 
@@ -67,9 +71,11 @@ toListUnsafe (TreePath _ True) = []
 toListUnsafe (TreePath m False) = uncurry (:) . second toListUnsafe $ M.findMin m
 
 prepend :: Int -> SinglePath -> SinglePath
+prepend _ p | p == nowhere = p
 prepend i (SinglePath tp) = SinglePath $ TreePath (M.singleton (Just i) tp) False
 
 prependMulti :: Maybe Int -> MultiPath -> MultiPath
+prependMulti _ mp | mp == nowhere = mp
 prependMulti i (MultiPath tp) = MultiPath $ TreePath (M.singleton i tp) False
 
 here :: Path p => p
