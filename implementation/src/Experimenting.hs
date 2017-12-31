@@ -27,6 +27,7 @@ import Types.ResolvedConstruction
 import Ambiguity
 import ConstructionResolution
 import Binding
+import FullExpander
 
 type Constr s = Construction (FixNode s String)
 type Production r a = Prod r String Token a
@@ -39,31 +40,39 @@ main = do
   [startSym, coreGrammar, grammar, source] <- getArgs
   putStrLn "Parsing coreGrammar"
   coreConstructions <- getConstructions noImpl coreGrammar
+  putStrLn "Resolving core Constructions"
+  resolvedCoreConstructions <- resolveConstructions coreConstructions
   putStrLn "Parsing grammar"
   constructions <- getConstructions (implementationGrammar coreConstructions) grammar
-  putStrLn "Parsing source"
-  mNode <- ambiguityParse constructions startSym source
   putStrLn "Resolving Constructions"
   resolvedConstructions <- resolveConstructions constructions
-  forM_ (M.toList resolvedConstructions) $ putStrLn . show
+  let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
+  putStrLn "Parsing source"
+  node <- ambiguityParse constructions startSym source
   putStrLn "Resolving source"
-  case resolveNames resolvedConstructions <$> mNode of
-    Nothing -> return ()
-    Just (Data res) -> putStrLn $ prettyShow res
-    Just (Error es) -> putStrLn "Binding errors:" >> mapM_ (putStrLn . show) es
+  node <- resolveSource resolvedConstructions node
+  putStrLn . prettyShow $ fullExpansion allResolvedConstructions node
 
-ambiguityParse :: M.Map String (Constr _) -> String -> String -> IO (Maybe (FixNode _ String))
+resolveSource :: M.Map String ResolvedConstruction -> _ -> IO _
+resolveSource resolvedConstructions node = case resolveNames resolvedConstructions node of
+  Data res -> return res
+  Error es -> do
+    putStrLn "Binding errors:"
+    mapM_ (putStrLn . show) es
+    error $ "Cannot continue"
+
+ambiguityParse :: M.Map String (Constr _) -> String -> String -> IO (FixNode _ String)
 ambiguityParse constructions startSym source = do
   (results, report) <- parseFile parser source
   putStrLn $ show report
   case results of
-    [] -> putStrLn "Nothing parsed" >> return Nothing
-    [res] -> return $ Just res
+    [] -> putStrLn "Nothing parsed" >> error "Cannot continue"
+    [res] -> return res
     _ -> do
       forM_ (ambiguities results) $ \(r, reprs) -> do
         putStrLn $ "Ambiguity: " ++ show r
         putStrLn . unlines $ show <$> reprs
-      return Nothing
+      error "Cannot continue"
   where
     parser = parseWithGrammar startSym constructions
     parseFile parser source = withFile source ReadMode $ \f ->
@@ -82,9 +91,11 @@ getConstructions :: (forall r. Production r (Splice (FixNode _ String)) -> Gramm
 getConstructions impl path = withFile path ReadMode $ \f -> do
   (parses, rep) <- parseConstructions impl . tokenize . force <$> hGetContents f
   case parses of
-    [p] -> return . M.fromList $ (Types.Construction.name &&& id) <$> p
+    [p] -> return . M.fromList $ (Types.Construction.name &&& id) . addPrefix <$> p
     [] -> error $ "Got no parses of grammar file \"" ++ path ++ "\": " ++ show rep
     _ -> error $ "Got too many parses of grammar file \"" ++ path ++ "\""
+  where
+    addPrefix c@Construction{name} = c { Types.Construction.name = path ++ "#" ++ name }
 
 fullParse :: IO ()
 fullParse = do

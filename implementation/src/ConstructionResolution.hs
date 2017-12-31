@@ -21,20 +21,7 @@ import Types.Result
 import Types.GenSym
 import Types.Ast
 
--- data Scope = FarScope | CloseScope | Scope MultiPath TreeEndPath Scope deriving (Show, Eq, Ord)
--- data ResolvedConstruction = ResolvedConstruction
---   { beforeBindings :: TreeEndPath
---   , afterBindings :: TreeEndPath
---   , inBindings :: [(TreeEndPath, TreePath)]
---   , scopes :: [Scope] }
---   deriving (Show)
-
 {-
-- Find name to path translation
-- Construct scopes
-- Collect before and after (could/should check that they are in CloseScope)
-- Collect inBindings (could/should check that target area has source area in scope)
-
 -- TODO: should check that names used in scope are disjoint (except for ) (?)
 -- TODO: should check that names pointing to binders actually point to identifiers
 -}
@@ -201,10 +188,10 @@ recurS accNames instLength h@Helpers{..} = \case
     calculateInstancesN inst (Just i:mp) (FixNode Node{children}) =
       calculateInstancesM inst mp $ children !! i
     calculateInstancesN inst mp n = error $ "Compiler error: malformed instance, path, or node, inst: " ++ show inst ++ ", mp: " ++ show mp ++ ", n: " ++ show n
-    calculateInstancesM [] [] MidNode{} = []
-    calculateInstancesM [] [] MidIdentifier{} = []
+    calculateInstancesM [] [] MidNode{} = [[]]
+    calculateInstancesM [] [] MidIdentifier{} = [[]]
     calculateInstancesM _ _ MidSplice{} = error $ "Compiler error: unexpecetd splice in calculateInstancesM"
-    calculateInstancesM [] [] Basic{} = []
+    calculateInstancesM [] [] Basic{} = [[]]
     calculateInstancesM [] (Nothing:mp) (Repeated _ ms) =
       calculateInstancesM [] mp <$> ms
       & zipWith (fmap . (:)) [0..]
