@@ -136,18 +136,18 @@ This thesis contributes the following:
 
 \chapter{Syntax Constructions}
 
-This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and freedoms. Section~\ref{sec:design-goals} will reiterate and clarify the goals of the design to guide the later sections (\ref{sec:constructions-and-types} through \ref{sec:design-implementation}), which will build the constructions one piece at a time.
+This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and capabilities. Section~\ref{sec:design-goals} will reiterate and clarify the goals of the design to guide the later sections (\ref{sec:constructions-and-types} through \ref{sec:design-implementation}), which will build the constructions one piece at a time.
 
 \section{Design Goals} \label{sec:design-goals}
 
 The goals that guide the design of syntax constructions can be found below. Note that not all of these are fully met.
 
 \begin{description}
-  \item[Tower of languages:] it should be possible to define new languages in terms of other languages, very much akin to Lisp tradition.
-  \item[Syntactical freedom:] syntax constructions should be able to specify new syntax, ideally with no constraints.
-  \item[Abstraction preservation:] no usage of a syntax construction should expose its implementation to an end user.
-  \item[Good error messages:] improper use or implementation of syntax constructions should present the user with understandable error messages.
-  \item[Composition through cherrypicking:] it should be possible to reuse individual features of languages, i.e. the unit of composition must be smaller than a full language.
+  \item[Tower of languages:] It should be possible to define new languages in terms of other languages, very much akin to Lisp tradition.
+  \item[Syntactical freedom:] Syntax constructions should be able to specify new syntax, ideally with no constraints.
+  \item[Abstraction preservation:] No usage of a syntax construction should expose its implementation to an end user.
+  \item[Good error messages:] Improper use or implementation of syntax constructions should present the user with understandable error messages.
+  \item[Composition through cherrypicking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
   \item[Reasoning without context:] Expanding upon the previous point, a syntax construction should be as self contained as possible to permit reasoning about it without full awareness of its context.
 \end{description}
 
@@ -213,7 +213,14 @@ The actual parsing is guided by the syntax constructions. If we for a moment dis
   \alt '[' <Expression> (',' <Expression>)* ']'
 \end{grammar}
 
-\synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vecLit} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences.
+\begin{grammar}
+<Expression> ::= <Expression> '+' <Expression>
+  \alt <Expression> '*' <Expression>
+  \alt '(' <Expression> ')'
+  \alt <Integer>
+\end{grammar}
+
+\synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vecLit} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences. Later on, in section~\ref{sec:design-implementation}, the use of EBNF operators will have a larger impact, but for now they are mereply conveniences.
 
 The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple syntax constructions to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989}.
 
@@ -223,7 +230,156 @@ The subject of precedence bears further elaboration. It is required in some form
 
 \section{Bindings} \label{sec:design-bindings}
 
+To support the goal of abstraction preservation and good error messages syntax constructions include name binding semantics.
+
+To motivate the design of the binding semantics this section will examine three examples.
+
+\begin{listing}
+\begin{minted}{ocaml}
+let a = "value" in
+print_string a
+\end{minted}
+\caption{An example in OCaml demonstrating simple let bindings.}
+\label{lst:nested-binding-example}
+\end{listing}
+
+Listing~\ref{lst:nested-binding-example} demonstrates simple let bindings. A let binding introduces bound names to a sub-tree (\mintinline{ocaml}|a| is bound in \mintinline{ocaml}|print_string a| in this case). The syntax construction below codifies these semantics.
+
+\begin{minted}{text}
+syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression {
+  #bind x in body
+  <...>
+}
+\end{minted}
+
+The syntax type \mintinline{text}|Identifier| is a built in type that participates in name binding. \mintinline{text}|#bind x in body| specifies that \mintinline{text}|x| is part of a definition, otherwise it would be interpreted as a reference that must be bound in the current environment.
+
+Listing~\ref{lst:imperative-binding-example} demonstrates scoping rules in Java. Variables cannot be used before their declaration nor after the scope they were introduced in ends.
+
+\begin{listing}
+\begin{minted}{java}
+String first = "first";
+{  // Opens a new scope
+  String second = "second";
+  System.out.println(first + second + third);  // Error: cannot find third
+  String third = "third";
+  System.out.println(first + second + third);
+}  // Closes the new scope
+System.out.println(first + second + third);  // Error: cannot find second or third
+\end{minted}
+\caption{An example in Java demonstrating scopes and imperative style local variables.}
+\label{lst:imperative-binding-example}
+\end{listing}
+
+These semantics can be described using only capabilities introduced so far, but with some drawbacks. For example, variable declaration, scope introduction and method call could be specified as follows:
+
+\begin{minted}{text}
+syntax declaration:Statement = t:Type x:Identifier "=" e:Expression ";" next:Statement {
+  #bind x in next
+  <...>
+}
+
+syntax scope:Statement = "{" s:Statement "}" ";" next:Statement {
+  <...>
+}
+
+syntax call:Statement = e:Expression "(" (a:Expression ("," as:Expression)*)? ")" ";" next:Statement {
+  <...>
+}
+
+syntax empty:Statement = {
+  <...>
+}
+\end{minted}
+
+The idea is to treat each statement as if it contained the following statements as a sub-tree, allowing \mintinline{text}|declaration| to bind a name in all following statements. A single ''special'' statement, an empty one, is additionally needed after the final statement.
+
+This specification breaks somewhat with intuition, conceptually Listing~\ref{lst:imperative-binding-example} contains a list of statements, one of which contains sub-statements, but using the specification above it only produces one syntax construction. It also introduces boilerplate, each statement must be written with an extra statement after it, regardless of whether it would normally use it or not, which breaks somewhat with the goal of considering each syntax construction in isolation.
+
+So while bindings in sub-trees are capable of expressing the desired semantics, they leave something to be desired.
+
+Listing~\ref{lst:javascript-function-binding-example}, however, cannot be expressed using bindings in sub-trees. A function in JavaScript can be used both before and after its declaration, permitting mutual recursion. Binding in sub-tree would then require both functions to be a sub-tree of the other, requiring the abstract syntax tree to be cyclic, which seems undesirable.
+
+\begin{listing}
+\begin{minted}{javascript}
+function foo(n) {
+  console.log("foo", n);
+  if (n > 0) bar(n-1);
+}
+function bar(n) {
+  console.log("bar", n);
+  if (n > 0) foo(n-1);
+}
+\end{minted}
+\caption{An example in JavaScript demonstrating mutually recursive functions.}
+\label{lst:javascript-function-binding-example}
+\end{listing}
+
+Instead, a syntax construction is allowed to specify that an identifier is bound before and / or after itself, thus permitting bindings that are not limited to sub-trees. Additionally explicit scopes can be introduced to limit bindings. The syntax construction below gives has the desired binding semantics.
+
+\begin{minted}{text}
+syntax funcDecl:Statement = "function" f:Identifier "(" (a:Identifier ("," as:Identifier)*)? ")" "{" body:Statement+ "}" {
+  #bind f before
+  #bind f after
+  #bind f, a, as in body
+  #scope (body)
+  <...>
+}
+\end{minted}
+
+This solution once again disconnects statements, allowing each to be defined in isolation, even when they need to affect adjacent statements with a binding.
+
+% TODO: need consistent terminology for things (expression is used to mean node sometimes, but Expression is commonly used for a different meaning, is probably not a very good thing.)
+% TODO: this almost certainly needs a different title, since it's not about the implementation of the system, rather about the implementation of a syntax construction
 \section{Implementation} \label{sec:design-implementation}
+
+Syntax constructions, being essentially macros, need a way to specify how they expand into whatever underlying language they are implemented on top of. Additionally, the goal of abstraction preservation requires that the implementation and expansion is never exposed to an end user. As such, the expansion must never fail or produce a malformed program.
+
+To achieve this the expansion is specified in a fairly limited way, which makes checking the implementation simpler.
+
+Furthermore, the system requires a base language, some point at which point expansion is finished. Syntax constructions themselves pose no requirements on this language and instead allow a construction to be marked as ''builtin'', meaning part of the base language.
+
+As expansion proceeds and syntax constructions are replaced by syntax constructions closer to the base language a similar transformation will take place on syntax types, a program will go from using the types of its language, to the types of the host language, etc. all the way down to the base language. To ensure that the final expanded program is syntactically correct each syntax type must designate either its underlying type or that it is a syntax type of the base language, i.e. ''builtin''. For example:
+
+\begin{minted}{text}
+syntax type BaseExpression = builtin
+
+syntax lambda:BaseExpression = "\" x:Identifier "." e:Expression {
+  #bind x in e
+  builtin
+}
+\end{minted}
+
+In the simplest case an implementation is simply a syntactical expression in the target language, with elements of the original syntax construction spliced in, similar to quote and unquote capabilities in similar systems. For example:
+
+\begin{minted}{text}
+syntax type Expression = BaseExpression
+
+syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression {
+  #bind x in body
+  #scope (body)
+  #scope (e)
+  BaseExpression` (\`id(x). `t(body)) `t(e)
+}
+\end{minted}
+
+Here a let expression is expanded into a lambda expression and application. \mintinline{text}|Expression`|, \mintinline{text}|`id| and \mintinline{text}|`t| assist with disambiguation in parsing. The underlying type of expressions must agree. It is worth noting here that during expansion all sub-expressions (e.g. \mintinline{text}|x| and \mintinline{text}|body| above) are treated as atomic, no inspection or modification is permitted.
+
+If the original syntax construction contains EBNF operators some elements may occur multiple times, forming lists of syntactical elements. These are included in the implementation using folds:
+
+\begin{minted}{text}
+syntax switch:Expression = "switch" e:Expression "{" cases:("case" test:Expression ":" result:Expression)* "default" ":" default:Expression "}" {
+  Expression`
+    let x = `t(e) in
+    `t(foldr cases rest
+         (Expression` if `t(test) == x
+                        then `t(result)
+                        else `t(rest))
+         default)
+}
+\end{minted}
+
+Here a switch is translated to a simple series of ifs, checking for equality with each case in turn. The fold expression takes four arguments: what list to fold over, the name of the result so far (the accumulator), the expression that will be used to construct the next result, and the initial value. The example uses a right fold, additionally left fold and versions without an initial value are available, the latter only being usable if the list contains at least one value (i.e. it was constructed using the ''+'' operator, not ''*'' or ''?'').
 
 \section{Proof of Termination} \label{sec:proof-termination}
 
@@ -276,7 +432,7 @@ SoundX \cite{Lorenzen2016} is a system for specifying extensible languages. It u
 
 The system works through a rewriting of derivation trees, not pure syntax, thus macros have access to not only types explicit in a program but also derived types.
 
-Copper \cite{VanWyk2007} and Silver \cite{VanWyk2010} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017}.
+Copper \cite{VanWyk2007} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
 
 \chapter{Results and Discussion}
 
