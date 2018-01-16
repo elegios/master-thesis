@@ -111,20 +111,18 @@ recurS :: [String] -> Int -> Helpers -> Splice SplicedNode -> Result (Expander M
 recurS accNames instLength h@Helpers{..} = \case
   Syntax n -> recurN n
   Simple s -> followSinglePath s
-  Fold dir list item acc f start -> do
+  Fold dir list acc f start -> do
     start' <- recurS accNames instLength h start
-    let h' = mkH list item
-        dir' = dirF dir
+    let dir' = dirF dir
     (instLength', insts) <- second (fmap dir') <$> findInstances list
-    f' <- foldF <$> recurS (acc : accNames) instLength' h' f
+    f' <- foldF <$> recurS (acc : accNames) instLength' h f
     return $ do
       s <- start'
       insts >>= foldM f' s
-  Fold1 dir list item acc f -> do
-    let h' = mkH list item
-        dir' = dirF dir
+  Fold1 dir list acc f -> do
+    let dir' = dirF dir
     (instLength', insts) <- second (fmap dir') <$> findInstances list
-    f' <- foldF <$> recurS (acc : accNames) instLength' h' f
+    f' <- foldF <$> recurS (acc : accNames) instLength' h f
     start <- followSinglePath' instLength' list
     return $ insts >>= \case
       inst : insts -> do
@@ -132,8 +130,6 @@ recurS accNames instLength h@Helpers{..} = \case
         foldM f' start' insts
       [] -> error $ "Compiler error: fold1 used on something with zero instances"
   where
-    mkH list (FoldFull s) = h { findPath = \name -> if name == s then findPath list else findPath name }
-    mkH _ FoldDestructure{} = h
     dirF FoldLeft = id
     dirF FoldRight = reverse
     foldF :: Expander MidNode -> MidNode -> [Int] -> Expander MidNode
@@ -154,6 +150,7 @@ recurS accNames instLength h@Helpers{..} = \case
     recurM (Repeated rep ms) = fmap (Repeated rep) . sequence <$> mapM recurM ms
     recurM (Sequenced r ms) = fmap (Sequenced r) . sequence <$> mapM recurM ms
 
+    -- BUG: referring to a name in a different list than we are folding over may work, if instLength is large enough, but the resulting value will be non-sensical
     followSinglePath = followSinglePath' instLength
     followSinglePath' :: Int -> String -> Result (Expander MidNode)
     followSinglePath' instLength name = case elemIndex name accNames of
@@ -188,10 +185,7 @@ recurS accNames instLength h@Helpers{..} = \case
     calculateInstancesN inst (Just i:mp) (FixNode Node{children}) =
       calculateInstancesM inst mp $ children !! i
     calculateInstancesN inst mp n = error $ "Compiler error: malformed instance, path, or node, inst: " ++ show inst ++ ", mp: " ++ show mp ++ ", n: " ++ show n
-    calculateInstancesM [] [] MidNode{} = [[]]
-    calculateInstancesM [] [] MidIdentifier{} = [[]]
-    calculateInstancesM _ _ MidSplice{} = error $ "Compiler error: unexpecetd splice in calculateInstancesM"
-    calculateInstancesM [] [] Basic{} = [[]]
+    calculateInstancesM [] [] _ = [[]]
     calculateInstancesM [] (Nothing:mp) (Repeated _ ms) =
       calculateInstancesM [] mp <$> ms
       & zipWith (fmap . (:)) [0..]

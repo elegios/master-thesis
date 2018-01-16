@@ -24,11 +24,11 @@ implementation impl = mdo
   let common = lit "(" *> inParens <* lit ")"
            <|> Syntax <$> impl'
            <|> terminal fold <*> identifier <*>
-               acc <*> identifier <*
+               identifier <*
                lit "(" <*> inParens <* lit ")" <*>
                inParens
            <|> terminal fold1 <*> identifier <*>
-               acc <*> identifier <*
+               identifier <*
                lit "(" <*> inParens <* lit ")"
   inParens <- rule $ common <|> Simple <$> identifier
   splice <- rule $ lit "(" *> inParens <* lit ")"
@@ -42,8 +42,6 @@ implementation impl = mdo
     fold1 _ = Nothing
     simpleOrBuiltin "builtin" = Nothing
     simpleOrBuiltin i = Just $ Simple i
-    acc = FoldFull <$> identifier
-      <|> lit "(" *> pure FoldDestructure <*> commaIds <* lit ")"
 
 construction :: Production r (Maybe (Splice n)) -> Grammar r (Production r (Construction n))
 construction impl = mdo

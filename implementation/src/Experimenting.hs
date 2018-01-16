@@ -13,13 +13,14 @@ import System.Environment (getArgs)
 import System.IO (hGetContents, withFile, IOMode(ReadMode))
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
-import Text.Earley (Grammar, Prod)
+import Text.Earley (Grammar, Prod, Report(Report, unconsumed, expected))
 
 import Lexer
 import BootParser
 import GrammarGenerator
-import Types.Lexer (Token)
+import Types.Lexer (Token, range)
 import Types.Construction
 import Types.Ast
 import Types.Result
@@ -89,10 +90,15 @@ resolveConstructions constructions =
 
 getConstructions :: (forall r. Production r (Splice (FixNode _ String)) -> Grammar r (Production r (FixNode _ String))) -> FilePath -> IO (M.Map String (Constr _))
 getConstructions impl path = withFile path ReadMode $ \f -> do
-  (parses, rep) <- parseConstructions impl . tokenize . force <$> hGetContents f
+  (parses, rep@Report{expected, unconsumed}) <- parseConstructions impl . tokenize . force <$> hGetContents f
   case parses of
     [p] -> return . M.fromList $ (Types.Construction.name &&& id) . addPrefix <$> p
-    [] -> error $ "Got no parses of grammar file \"" ++ path ++ "\": " ++ show rep
+    [] -> do
+      putStrLn $ "Got no parses of grammar file \"" ++ path ++ "\""
+      putStrLn $ "Expected: " ++ (show . S.toList $ S.fromList expected)
+      putStrLn $ "Unconsumed range: " ++ show (range unconsumed)
+      putStrLn $ "Unconsumed: " ++ show unconsumed
+      error $ "Cannot continue"
     _ -> error $ "Got too many parses of grammar file \"" ++ path ++ "\""
   where
     addPrefix c@Construction{name} = c { Types.Construction.name = path ++ "#" ++ name }
