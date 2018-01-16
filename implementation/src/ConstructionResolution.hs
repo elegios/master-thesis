@@ -6,7 +6,7 @@ import Control.Arrow (second)
 import Control.Monad ((>=>), forM, foldM)
 import Data.Foldable (foldl')
 import Data.Function ((&))
-import Data.Maybe (isNothing, catMaybes)
+import Data.Maybe (catMaybes)
 import Data.List (elemIndex)
 
 import Control.Monad.Reader (Reader, runReader, ask, local, reader)
@@ -103,27 +103,27 @@ data ExpanderState = ExpanderState
 type Expander a = Reader ExpanderState a
 
 mkExpand :: Helpers -> Splice SplicedNode -> Result (Node -> MidNode)
-mkExpand h n = (. mkExpanderState) . runReader <$> recurS [] 0 h n
+mkExpand h n = (. mkExpanderState) . runReader <$> recurS [] here h n
   where
     mkExpanderState node = ExpanderState { node = node, accs = [], inst = [] }
 
-recurS :: [String] -> Int -> Helpers -> Splice SplicedNode -> Result (Expander MidNode)
-recurS accNames instLength h@Helpers{..} = \case
+recurS :: [String] -> MultiPath -> Helpers -> Splice SplicedNode -> Result (Expander MidNode)
+recurS accNames instPath h@Helpers{..} = \case
   Syntax n -> recurN n
   Simple s -> followSinglePath s
   Fold dir list acc f start -> do
-    start' <- recurS accNames instLength h start
+    start' <- recurS accNames instPath h start
     let dir' = dirF dir
-    (instLength', insts) <- second (fmap dir') <$> findInstances list
-    f' <- foldF <$> recurS (acc : accNames) instLength' h f
+    (instPath', insts) <- second (fmap dir') <$> findInstances list
+    f' <- foldF <$> recurS (acc : accNames) instPath' h f
     return $ do
       s <- start'
       insts >>= foldM f' s
   Fold1 dir list acc f -> do
     let dir' = dirF dir
-    (instLength', insts) <- second (fmap dir') <$> findInstances list
-    f' <- foldF <$> recurS (acc : accNames) instLength' h f
-    start <- followSinglePath' instLength' list
+    (instPath', insts) <- second (fmap dir') <$> findInstances list
+    f' <- foldF <$> recurS (acc : accNames) instPath' h f
+    start <- followSinglePath' instPath' list
     return $ insts >>= \case
       inst : insts -> do
         start' <- local (\es -> es {inst}) $ start
@@ -140,25 +140,25 @@ recurS accNames instLength h@Helpers{..} = \case
     recurN (FixNode n@Node{children}) = mapM recurM children
       & fmap sequence
       & fmap (fmap $ \cs -> MidNode $ n {children = cs})
-    recurN (FixNode (SyntaxSplice s)) = recurS accNames instLength h s
+    recurN (FixNode (SyntaxSplice s)) = recurS accNames instPath h s
 
     recurM :: SplicedMidNode -> Result (Expander MidNode)
     recurM (MidNode n) = recurN $ FixNode n
     recurM (MidIdentifier r symbol) = pure . return . MidIdentifier r $ expandGenSym symbol
-    recurM (MidSplice s) = recurS accNames instLength h s
+    recurM (MidSplice s) = recurS accNames instPath h s
     recurM (Basic t) = pure . return $ Basic t
     recurM (Repeated rep ms) = fmap (Repeated rep) . sequence <$> mapM recurM ms
     recurM (Sequenced r ms) = fmap (Sequenced r) . sequence <$> mapM recurM ms
 
     -- BUG: referring to a name in a different list than we are folding over may work, if instLength is large enough, but the resulting value will be non-sensical
-    followSinglePath = followSinglePath' instLength
-    followSinglePath' :: Int -> String -> Result (Expander MidNode)
-    followSinglePath' instLength name = case elemIndex name accNames of
+    followSinglePath = followSinglePath' instPath
+    followSinglePath' :: MultiPath -> String -> Result (Expander MidNode)
+    followSinglePath' instPath name = case elemIndex name accNames of
       Just i -> pure . reader $ (!! i) . accs
       Nothing -> do
-        mp <- fromMultiPath <$> findPath name
-        if length (filter isNothing mp) <= instLength
-          then pure $ followSPN <$> reader node <*> (catMaybes <$> specialize mp)
+        mp <- findPath name
+        if mp `childOf` instPath
+          then pure $ followSPN <$> reader node <*> (catMaybes <$> specialize (fromMultiPath mp))
           else Error . pure $ SingleNameExpected constrName name
     followSPN (FixNode Node{children}) (i:p) = followSPM p $ children !! i
     followSPN n p = error $ "Compiler error: malformed path or node, p: " ++ show p ++ ", n: " ++ show n
@@ -173,15 +173,14 @@ recurS accNames instLength h@Helpers{..} = \case
         recur mp [] = mp
         recur (Nothing:mp) (i:inst) = Just i : recur mp inst
         recur (i@Just{}:mp) inst = i : recur mp inst
-    findInstances :: String -> Result (Int, Expander [[Int]])
+    findInstances :: String -> Result (MultiPath, Expander [[Int]])
     findInstances name = do
-      mp <- fromMultiPath <$> findPath name
-      let instLength' = length $ filter isNothing mp
-      if instLength' < instLength
-        then Error . pure $ PoorFoldScoping constrName name
-        else pure . (instLength',) $ do
+      mp <- findPath name
+      if mp `childOf` instPath
+        then pure . (mp, ) $ do
           ExpanderState{node,inst} <- ask
-          return $ calculateInstancesN inst mp node
+          return $ calculateInstancesN inst (fromMultiPath mp) node
+        else Error . pure $ PoorFoldScoping constrName name
     calculateInstancesN inst (Just i:mp) (FixNode Node{children}) =
       calculateInstancesM inst mp $ children !! i
     calculateInstancesN inst mp n = error $ "Compiler error: malformed instance, path, or node, inst: " ++ show inst ++ ", mp: " ++ show mp ++ ", n: " ++ show n
