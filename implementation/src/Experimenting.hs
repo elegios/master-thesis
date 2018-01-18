@@ -39,19 +39,21 @@ noImpl _ = return empty
 main :: IO ()
 main = do
   [startSym, coreGrammar, grammar, source] <- getArgs
-  putStrLn "Parsing coreGrammar"
+  putStrLn "\nParsing coreGrammar"
   coreConstructions <- getConstructions noImpl coreGrammar
-  putStrLn "Resolving core Constructions"
+  putStrLn "\nResolving core Constructions"
   resolvedCoreConstructions <- resolveConstructions coreConstructions
-  putStrLn "Parsing grammar"
+  putStrLn "\nParsing grammar"
   constructions <- getConstructions (implementationGrammar coreConstructions) grammar
-  putStrLn "Resolving Constructions"
+  putStrLn "\nResolving Constructions"
   resolvedConstructions <- resolveConstructions constructions
   let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
-  putStrLn "Parsing source"
+  putStrLn "\nParsing source"
   node <- ambiguityParse constructions startSym source
-  putStrLn "Resolving source"
+  putStrLn "\nResolving source"
   node <- resolveSource resolvedConstructions node
+  putStrLn . prettyShow $ node
+  putStrLn "\nExpanding source"
   putStrLn . prettyShow $ fullExpansion allResolvedConstructions node
 
 resolveSource :: M.Map String ResolvedConstruction -> _ -> IO _

@@ -15,7 +15,7 @@ import Text.PrettyPrint ((<+>))
 import qualified Text.PrettyPrint as P
 
 import Types.Construction (Repeat(..))
-import Types.Lexer (Ranged(..), Range, Token)
+import Types.Lexer (Ranged(..), Range, Token(..))
 
 newtype FixNode s i = FixNode { unSplice :: NodeI (s (FixNode s i)) i} deriving (Ranged)
 deriving instance (Show (s (FixNode s i)), Show i) => Show (FixNode s i)
@@ -70,6 +70,7 @@ pretty (FixNode n) = case n of
   where
     -- TODO: not an accurate name at this point
     prettyNamed cs = cs
+      & filter isInteresting
       & fmap prettyMid
       & P.punctuate P.comma
       & P.vcat & P.parens
@@ -82,6 +83,11 @@ pretty (FixNode n) = case n of
       & P.punctuate P.comma
       & P.sep & P.brackets
     prettyMid (Sequenced _ named) = prettyNamed named
+
+isInteresting :: MidNodeI s i -> Bool
+isInteresting (Basic IdentifierTok{}) = False
+isInteresting (Basic SymbolTok{}) = False
+isInteresting _ = True
 
 prettyShow :: (Show (s (FixNode s i)), Show i) => FixNode s i -> String
 prettyShow = P.render . pretty

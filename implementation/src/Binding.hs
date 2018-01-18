@@ -223,7 +223,7 @@ defineVertical (tp, (p, r, symbol)) = do
   return . maybe ok mkError $ find (childrenOverlapping tp . fst) prevVerticals
   where
     mkError (_, (r', _)) = redefError symbol r r'
-    insert sc a = ((Just . (a:) . concat) `M.alter` symbol) `alter` sc -- TODO: looks kinda messy
+    insert sc a = ((a:) `alter` symbol) `alter` sc
 
 lookup :: Gen pre => (Range, pre) -> SinglePath -> Resolver pre (Result GenSym)
 lookup (r, symbol) p = do

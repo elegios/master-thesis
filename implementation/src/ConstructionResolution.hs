@@ -22,7 +22,7 @@ import Types.GenSym
 import Types.Ast
 
 {-
--- TODO: should check that names used in scope are disjoint (except for ) (?)
+-- TODO: should check that names used in #scope are disjoint (except for list specifiers, which must be children of parent list specifiers) (?)
 -- TODO: should check that names pointing to binders actually point to identifiers
 -}
 
