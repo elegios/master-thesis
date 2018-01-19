@@ -1,6 +1,6 @@
 {-# LANGUAGE RecursiveDo, ViewPatterns, FlexibleContexts #-}
 
-module Binding (resolveNames, Error(..)) where
+module Binding (resolveNames, Error(..), Gen) where
 
 import Prelude hiding (lookup)
 import Data.List (unzip4, mapAccumL)
@@ -127,7 +127,7 @@ midRes (p, MidNode n) = mdo
         ResolverState{afterBindingsR=prevAfterBindings, inBindingsR} <- getPast
         let singleVertLookup sc = M.mapMaybe findVertical . fromMaybe M.empty $ M.lookup sc inBindingsR
             findVertical = listToMaybe . map snd . filter (childOf p . fst)
-            singleScLookup sc = singleHoriLookup prevAfterBindings sc `M.union` singleVertLookup sc
+            singleScLookup sc = singleVertLookup sc `M.union` singleHoriLookup prevAfterBindings sc
             (closeAfter, farAfter) = case singleScLookup <$> scopeChain sc of
               close : far -> (close, M.unions far)
               _ -> error $ "Compiler error: scopeChain gave no results"
@@ -235,7 +235,7 @@ lookup (r, symbol) p = do
       mAfter <- singleHoriLookup sc <$> getsPast afterBindingsR
       mBefore <- singleHoriLookup sc <$> getFuture
       mIn <- singleVertLookup sc <$> getsPast inBindingsR
-      return $ mAfter <|> mBefore <|> mIn
+      return $ mIn <|> mAfter <|> mBefore
     singleHoriLookup sc bindings = snd <$> (M.lookup sc bindings >>= M.lookup symbol)
     singleVertLookup sc bindings = listToMaybe . fmap (snd . snd) . filter (childOf p . fst) . concat $ multiLookup sc symbol bindings
 

@@ -25,10 +25,12 @@ import Types.Construction
 import Types.Ast
 import Types.Result
 import Types.ResolvedConstruction
+import Types.GenSym (GenSym)
 import Ambiguity
 import ConstructionResolution
 import Binding
 import FullExpander
+import Interpreter
 
 type Constr s = Construction (FixNode s String)
 type Production r a = Prod r String Token a
@@ -54,9 +56,19 @@ main = do
   node <- resolveSource resolvedConstructions node
   putStrLn . prettyShow $ node
   putStrLn "\nExpanding source"
-  putStrLn . prettyShow $ fullExpansion allResolvedConstructions node
+  let coreEProgram = fullExpansion allResolvedConstructions node
+  putStrLn $ showCoreProgram coreEProgram
+  putStrLn "\nRemoving efuns"
+  let coreUnresProgram = removeEFuns coreEProgram
+  putStrLn $ showCoreProgram coreUnresProgram
+  putStrLn "\nResolving again"
+  coreProgram <- resolveSource allResolvedConstructions coreUnresProgram
+  putStrLn $ showCoreProgram coreProgram
+  putStrLn "\nInterpreting program"
+  finalResult <- interpret coreProgram
+  putStrLn $ "=> " ++ finalResult
 
-resolveSource :: M.Map String ResolvedConstruction -> _ -> IO _
+resolveSource :: Gen pre => M.Map String ResolvedConstruction -> FixNode NoSplice pre -> IO (FixNode NoSplice GenSym)
 resolveSource resolvedConstructions node = case resolveNames resolvedConstructions node of
   Data res -> return res
   Error es -> do

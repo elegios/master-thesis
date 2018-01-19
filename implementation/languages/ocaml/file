@@ -1,0 +1,44 @@
+let print thing = #debug thing; thing
+let blub = 1 + 2 * 3
+let f a b c = a + b + c
+let a = 1
+let b = 2
+let c = 3
+let d = 4
+
+let appliTest = f a b c
+
+let ariTest = a + b * c + d
+
+let funcTest a b = a + b
+
+//let matchTest = match [4; a; "blub"] with
+let matchTest = match 4 with
+  | 3 -> "three"
+  | 4 -> "four"
+  | [] -> "empty list"
+  | [a] -> "one in list and name bind" + a
+  | [a;b;c] -> "three in list"
+// | _ -> "Anything"
+
+let testThing = match 10 :: 20 :: 30 :: [] with
+  | [] -> print "none"
+  | [a] -> print "one"; print a
+  | [a; b] -> print "two"; print a; print b
+  | a :: b :: c -> print "two or more"; print a; print b; print c
+  | [a; b; c] -> print "three"; print a; print b; print c
+
+let letChain =
+  let a = 1 in
+  let b = 2 in
+  let f c = a + b + c in
+  f 42
+
+let seqChain =
+  let a = 1 in
+  print a;
+  let b = 2 in
+  print b;
+  print (a + b)
+
+let printUnit = print ()

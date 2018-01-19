@@ -29,6 +29,7 @@ library
                      , Types.Result
                      , Types.GenSym
                      , FullExpander
+                     , Interpreter
                      , Experimenting
   build-depends:       base >= 4.7 && < 5
                      , array

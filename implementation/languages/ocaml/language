@@ -1,0 +1,155 @@
+
+syntax top:File = ts:Top+ {
+  foldl1 ts prev (BExpression` `t(prev); `t(ts))
+}
+
+syntax topLet:Top = "let" x:Identifier args:Pattern* "=" e:Expression (";" ";")? {
+  #bind x after
+  #scope (args e)
+  BExpression` defAfter `id(x) = `t(
+    foldr args next
+      (BExpression` fun x.
+        (`t(args) (fun _. #crash) x;
+         `t(next)))
+    e)
+}
+
+syntax debugPrint:Expression = "#" "debug" {
+  BExpression` #print
+}
+
+syntax funApp:Expression = f:Expression arg:Expression {
+  #assoc left
+  #prec 13
+  BExpression` `t(f) `t(arg)
+}
+
+syntax letExpr:Expression = "let" x:Identifier args:Pattern* "=" e:Expression "in" body:Expression {
+  #prec 2
+  #bind x in body
+  #scope (body)
+  #scope (args e)
+  BExpression` defAfter `id(x) = `t(
+    foldr args next
+      (BExpression` fun x.
+        (`t(args) (fun _. #crash) x;
+         `t(next)))
+    e);
+  `t(body)
+}
+
+syntax match:Expression = "match" e:Expression "with" arm:("|" p:Pattern "->" body:Expression)+ {
+  #scope arm:(p body)
+  #scope (e)
+  #prec 1
+  BExpression` #callcc (fun end. (fun val.
+    `t(foldr arm prev
+         (BExpression`
+           #callcc (fun next.
+             (`t(p) next val;
+              end `t(body)));
+           `t(prev))
+       (BExpression` #crash)))
+    `t(e))
+}
+
+syntax plus:Expression = a:Expression "+" b:Expression {
+  #prec 11
+  #assoc left
+  BExpression` #plus `t(a) `t(b)
+}
+
+syntax times:Expression = a:Expression "*" b:Expression {
+  #assoc left
+  #prec 12
+  BExpression` #multiply `t(a) `t(b)
+}
+
+syntax parens:Expression = "(" e:Expression ")" {
+  e
+}
+
+// NOTE: ideally :: would be interpreted as a single token here, but : is one of the symbol tokens that do not merge
+syntax cons:Expression = h:Expression ":" ":" t:Expression {
+  #assoc right
+  #prec 10
+  BExpression` #cons `t(h) `t(t)
+}
+
+syntax seqComp:Expression = a:Expression ";" b:Expression {
+  #assoc right
+  #prec 2
+  BExpression` `t(a); `t(b)
+}
+
+syntax var:Expression = v:Identifier { BExpression``id(v) }
+syntax unitLit:Expression = "(" ")" { BExpression` #unit }
+syntax IntLit:Expression = n:Integer { BExpression``int(n) }
+syntax FloatLit:Expression = f:Float { BExpression``float(f) }
+syntax StringLit:Expression = s:String { BExpression``str(s) }
+syntax listLit:Expression = "[" (e:Expression (";" es:Expression)*)? "]" {
+  foldr e next
+    (BExpression` #cons `t(e) `t(next))
+  foldr es next
+    (BExpression` #cons `t(es) `t(next))
+  (BExpression` #nil)
+}
+
+syntax intPat:Pattern = i:Integer {
+  BExpression` efun fail. efun val.
+    #if (#equal `int(i) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax floatPat:Pattern = f:Float {
+  BExpression` efun fail. efun val.
+    #if (#equal `float(f) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax stringPat:Pattern = s:String {
+  BExpression` efun fail. efun val.
+    #if (#equal `str(s) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax bindPat:Pattern = id:Identifier {
+  #bind id after
+  BExpression` efun _. efun val.
+    defAfter `id(id) = val
+}
+syntax wildcardPat:Pattern = "_" {
+  BExpression` efun _. efun _. #unit
+}
+syntax listPat:Pattern = "[" (p:Pattern (";" ps:Pattern)*)? "]" {
+  BExpression` efun fail. efun val.
+    `t(foldr p next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(p) fail (#head prev);
+            `t(next) (#tail prev)))
+       foldr ps next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(ps) fail (#head prev);
+            `t(next) (#tail prev)))
+       (BExpression` (efun prev.
+         #if (#equal prev #nil)
+           (fun _. #unit)
+           (fun _. fail #unit))))
+    val
+}
+syntax consPat:Pattern = h:Pattern ":" ":" t:Pattern {
+  #assoc right
+  #prec 10
+  BExpression` efun fail. efun val.
+    (#if (#equal val #nil)
+       (fun _. fail #unit)
+       (fun _. #unit);
+     `t(h) fail (#head val);
+     `t(t) fail (#tail val))
+}

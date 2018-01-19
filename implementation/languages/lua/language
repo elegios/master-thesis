@@ -1,0 +1,184 @@
+syntax top:File = body:Block {
+  BExpression` #callcc (fun return.
+    `t(body) return (fun _. #crash))
+}
+
+syntax var:Expression = id:Identifier {
+  BExpression` `id(id)
+}
+
+syntax intLit:Expression = i:Integer {
+  BExpression` `int(i)
+}
+
+// This has incorrect semantics when called with the wrong number of arguments
+// Also breaks precedence transformation, f must be high precedence, e and es must be low precence :(
+syntax funcCall:Expression =
+  f:Expression "(" args:ArgList ")"
+{
+  #prec 15
+  BExpression` `t(args) `t(f) #unit
+}
+
+// This is included to enable the Expressions to go to the top level Expression non-terminal, ideally it would be defined inline in funcCall, but then it would recurse into a lower precedence
+syntax argList:ArgList = (e:Expression ("," es:Expression)*)? {
+  BExpression` efun f. `t(
+    foldl es prev
+      (BExpression` `t(prev) `t(es))
+    foldl e prev
+      (BExpression` `t(prev) `t(e))
+    (BExpression` f))
+}
+
+syntax equal:Expression = a:Expression "==" b:Expression {
+  #prec 8
+  BExpression` #equal `t(a) `t(b)
+}
+
+syntax plus:Expression = a:Expression "+" b:Expression {
+  #prec 11
+  #assoc left
+  BExpression` #plus `t(a) `t(b)
+}
+
+syntax minus:Expression = a:Expression "-" b:Expression {
+  #prec 11
+  #assoc left
+  BExpression` #minus `t(a) `t(b)
+}
+
+syntax times:Expression = a:Expression "*" b:Expression {
+  #assoc left
+  #prec 12
+  BExpression` #multiply `t(a) `t(b)
+}
+
+syntax divide:Expression = a:Expression "/" b:Expression {
+  #assoc left
+  #prec 12
+  BExpression` #divide `t(a) `t(b)
+}
+
+syntax parens:Expression = "(" e:Expression ")" {
+  e
+}
+
+syntax assignment:Statement =
+  ref:Expression "=" value:Expression
+{
+  BExpression` efun _. efun _.
+    #assign `t(ref) (#deref `t(value))
+}
+
+syntax local:Statement =
+  "local" x:Identifier ("=" e:Expression)?
+{
+  #bind x after
+  BExpression` efun _. efun _.
+    defAfter `id(x) = #ref `t(foldr e _ (e) (BExpression` #unit))
+}
+
+syntax block:Statement = "do" b:Block "end" {
+  b
+}
+
+syntax if:Statement =
+  "if" cond:Expression
+  "then" then:Block
+  elseif:("elseif" econd:Expression "then" ethen:Block)*
+  ("else" else:Block)? "end"
+{
+  BExpression` efun return. efun break. #if `t(cond)
+    (fun _. `t(then) return break)
+    (fun _. `t(
+      foldr elseif next
+        (BExpression` #if `t(econd)
+          (fun _. `t(ethen) return break)
+          (fun _. `t(next)))
+      foldr else _
+        (BExpression` else return break)
+      (BExpression` #unit)))
+}
+
+syntax while:Statement =
+  "while" cond:Expression "do"
+  body:Block "end"
+{
+  BExpression` efun return. efun _. #callcc (fun break.
+    #fix (fun repeat. fun _.
+      #if `t(cond)
+        (fun _.
+          (`t(body) return break;
+           repeat #unit))
+        (fun _. #unit)))
+}
+
+syntax repeat:Statement =
+  "repeat" body:Block "until" cond:Expression
+{
+  BExpression` efun return. efun _. #callcc (fun break.
+    #fix (fun repeat. fun _. (
+      `t(body) return break;
+      #if `t(cond)
+        (fun _. repeat #unit)
+        (fun _. #unit))))
+}
+
+syntax numFor:Statement =
+  "for" i:Identifier "="
+  s:Expression "," e:Expression
+  ("," step:Expression)?
+  "do" body:Block "end"
+{
+  #bind i in body
+  BExpression` efun return. efun _.
+    (defAfter step = `t(foldr step _ (step) (BExpression` 1));
+     #callcc (fun break. #fix (fun rep. fun x.
+       (defAfter `id(i) = x;
+        `t(body) return break;
+        rep (#plus x step)))
+       `t(s)))
+}
+
+syntax function:Statement =
+  "function" f:Identifier
+  "(" (a:Identifier ("," as:Identifier)*)? ")"
+  body:Block "end"
+{
+  #bind f before
+  #bind f after
+  #bind f, a, as in body
+  BExpression` efun _. efun _.
+    (defAround `id(f) = #fix (fun recur.
+      (defAfter `id(f) = recur;
+       `t(foldr a next
+            (BExpression` fun `id(a). `t(next))
+          foldr as next
+            (BExpression` fun `id(as). `t(next))
+          (BExpression` fun _. #callcc (fun return.
+            `t(body) return (fun _. #crash)))))))
+}
+
+syntax blockContent:Block =
+  (stmnts:Statement ";"?)* ret:Return?
+{
+  #scope (stmnts ret)
+  BExpression` efun return. efun break. `t(
+    foldr stmnts next
+      (BExpression` `t(stmnts) return break; `t(next))
+    foldr ret _
+      (BExpression` `t(ret) return break)
+    (BExpression` #unit))
+}
+
+syntax return:Return = "return" e:Expression? {
+  BExpression` efun return. efun break. `t(
+    foldr e _
+      (BExpression` return `t(e))
+    (BExpression` return #unit))
+}
+
+syntax break:Return = "break" {
+  BExpression` efun return. efun break. break #unit
+}
+

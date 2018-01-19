@@ -1,0 +1,91 @@
+syntax top:File = e:BExpression {
+  builtin
+}
+
+syntax defAfter:BExpression = "defAfter" x:Identifier "=" e:BExpression {
+  #bind x after
+  #scope (e)
+  #prec 3
+  builtin
+}
+
+syntax defAround:BExpression = "defAround" x:Identifier "=" e:BExpression {
+  #bind x before
+  #bind x after
+  #scope (e)
+  #prec 2
+  builtin
+}
+
+syntax seqComp:BExpression = e1:BExpression ";" e2:BExpression {
+  #assoc left
+  #prec 1
+  builtin
+}
+
+syntax appli:BExpression = f:BExpression a:BExpression {
+  #assoc left
+  #prec 4
+  builtin
+}
+
+syntax fun:BExpression = "fun" x:Identifier "." e:BExpression {
+  #bind x in e
+  #scope (e)
+  #prec 3
+  builtin
+}
+
+// A special "function" that must be applied immediately. Used to simulate syntax constructions returning functions, which can then use information from the outside to construct the inside
+// It is allowed to nest efuns, and then immediately apply them
+// The body of an efun is not scoped, allowing bindings to escape it
+// this means that it's possible to write "(efun x. defAfter blub = x) blub", which would be valid as far as name res goes, but not valid semantically. I see no simple solution to this
+// Presently efun has been used as "evaluate the argument, bind the result to the parameter name"
+// The combination with callcc especially can create incorrect things:
+//
+// #callcc (efun x.
+//   x #unit;
+//   defAfter blub = 4;
+//   #unit);
+// blub  // blub is bound here, by the definition above, yet it never evaluates, so there is no value available for blub
+//
+// That should probably be disallowed (i.e. just stay consistent with "must be applied immediately")
+// Additionally, (efun a. (efun a. a)) should give an error (not checking vertical overlaps atm, which is why it works), but right now it gives (efun a#1. (efun a#2. a#1)), i.e. efun cannot be used for its intended purpose when name resolution performs the proper checks
+syntax exprfun:BExpression = "efun" x:Identifier "." e:BExpression {
+  #bind x in e
+  #prec 3
+  builtin
+}
+
+syntax parens:BExpression = "(" e:BExpression ")" {
+  e
+}
+
+syntax var:BExpression = id:Identifier { builtin }
+syntax int:BExpression = i:Integer { builtin }
+syntax float:BExpression = f:Float { builtin }
+syntax string:BExpression = s:String { builtin }
+
+syntax builtin:BExpression = "#" b:Builtin {
+  builtin
+}
+syntax callcc:Builtin = "callcc" { builtin }
+syntax fix:Builtin = "fix" { builtin }
+syntax ref:Builtin = "ref" { builtin }
+syntax deref:Builtin = "deref" { builtin }  // NOTE: should be identity function if passed a non-reference
+syntax assign:Builtin = "assign" { builtin }
+syntax plus:Builtin = "plus" { builtin }
+syntax minus:Builtin = "minus" { builtin }
+syntax multiply:Builtin = "multiply" { builtin }
+syntax divide:Builtin = "divide" { builtin }
+syntax equal:Builtin = "equal" { builtin }
+syntax true:Builtin = "true" { builtin }
+syntax false:Builtin = "false" { builtin }
+syntax unit:Builtin = "unit" { builtin }
+syntax cons:Builtin = "cons" { builtin }
+syntax head:Builtin = "head" { builtin }
+syntax tail:Builtin = "tail" { builtin }
+syntax nil:Builtin = "nil" { builtin }
+syntax if:Builtin = "if" { builtin }
+syntax crash:Builtin = "crash" { builtin }
+syntax print:Builtin = "print" { builtin }
