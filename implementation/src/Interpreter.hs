@@ -68,7 +68,7 @@ instance Show sym => Eq (Value sym r) where
 type Node sym = NodeI (NoSplice (FixNode NoSplice sym)) sym
 
 interpret :: (Ord sym, Show sym) => FixNode NoSplice sym -> IO String
-interpret = fmap show . runInterpreter . eval . evalEFuns M.empty . unSplice
+interpret = fmap show . runInterpreter . eval . view . evalEFuns M.empty . unSplice
 
 removeEFuns :: (Ord sym, Show sym) => FixNode NoSplice sym -> FixNode NoSplice sym
 removeEFuns (FixNode n) = FixNode $ evalEFuns M.empty n
@@ -97,46 +97,44 @@ evalEFuns m n@Node{name, children} = case (constrName name, children) of
     evalEFunsM m (Sequenced r children) = Sequenced r $ evalEFunsM m <$> children
     evalEFunsM _ m = m
 
-eval :: (Ord sym, Show sym) => Node sym -> Interpreter sym r (Value sym r)
-eval SyntaxSplice{} = error $ "Compiler error: eval encountered a syntax splice"
-eval n@Node{name, children} = case (constrName name, children) of
-  ("top", [MidNode n]) -> evalWithArounds n
+eval :: (Ord sym, Show sym) => NodeView sym -> Interpreter sym r (Value sym r)
+eval = \case
+  N "top" [n] -> evalWithArounds n
 
-  ("defAfter", [_, MidIdentifier _ i, _, MidNode e]) ->
+  N "defAfter" [_, Id i, _, e] ->
     evalWithArounds e >>= modify . M.insert i >> return UnitV
-  ("defAround", _) -> return UnitV
-  ("seqComp", [MidNode e1, _, MidNode e2]) -> eval e1 >> eval e2
-  ("appli", [MidNode f, MidNode e]) -> eval f >>= \case
+  N "defAround" _ -> return UnitV
+
+  N "seqComp" [e1, _, e2] -> eval e1 >> eval e2
+  N "appli" [f, e] -> eval f >>= \case
     FuncV f -> eval e >>= f
     value -> errorSource f $ "Attempted to apply non-function value: " ++ show value
-  ("fun", [_, MidIdentifier _ i, _, MidNode e]) -> get >>= \closure -> return . FuncV $ \v -> scope $ do
+  N "fun" [_, Id i, _, e] -> get >>= \closure -> return . FuncV $ \v -> scope $ do
     put closure
     modify $ M.insert i v
     evalWithArounds e
 
-  ("var", [MidIdentifier _ i]) -> gets (M.lookup i) >>= \case
+  N "var" [Id i] -> gets (M.lookup i) >>= \case
     Just v -> return v
     Nothing -> error $ "Identifier " ++ show i ++ " is not defined"
 
-  ("builtin", [_, MidNode (Node{name = builtinName})]) -> return . builtin $ constrName builtinName
+  N "builtin" [_, N builtinName _] -> return $ builtin builtinName
 
-  ("int", [Basic (IntegerTok _ i)]) -> return . IntV $ toInteger i
-  ("float", [Basic (FloatTok _ f)]) -> return $ FloatV f
-  ("string", [Basic (StringTok _ s)]) -> return $ StringV s
+  N "int" [I i] -> return . IntV $ toInteger i
+  N "float" [F f] -> return $ FloatV f
+  N "string" [S s] -> return $ StringV s
 
-  _ -> error $ "Malformed / unsupported program node: " ++ name ++ ", children: " ++ show children
+  n -> error $ "Malformed / unsupported program node: " ++ show n
 
-evalWithArounds :: (Show sym, Ord sym) => Node sym -> Interpreter sym r (Value sym r)
+evalWithArounds :: (Show sym, Ord sym) => NodeView sym -> Interpreter sym r (Value sym r)
 evalWithArounds n = scope $ do
   defArounds <- mapM defAround (getUnscopedNodes n)
   evalDefArounds $ catMaybes defArounds
   eval n
   where
-    defAround SyntaxSplice{} = error $ "Compiler error: defAround encountered a syntax splice"
-    defAround Node{name, children} = case (constrName name, children) of
-      ("defAround", [_, MidIdentifier _ i, _, MidNode e]) ->
-        Just . (, (i, evalWithArounds e)) <$> freeVariables e
-      _ -> return Nothing
+    defAround (N "defAround" [_, Id i, _, e]) =
+      Just . (, (i, evalWithArounds e)) <$> freeVariables e
+    defAround _ = return Nothing
     evalDefArounds [] = return ()
     evalDefArounds defArounds = case partition (S.null . fst) defArounds of
       ([], notReady) -> error $ "Could not evaluate defArounds in a scope, these remain: " ++ show (fst . snd <$> notReady)
@@ -146,35 +144,33 @@ evalWithArounds n = scope $ do
         evalDefArounds $ removeBound (M.keysSet newM) <$> notReady
     removeBound bound = first (`S.difference` bound)
 
-freeVariables :: Ord sym => Node sym -> Interpreter sym r (S.Set sym)
-freeVariables n = scope $ recur n
+freeVariables :: Ord sym => NodeView sym -> Interpreter sym r (S.Set sym)
+freeVariables = scope . recur
   where
-    recur SyntaxSplice{} = error $ "Compiler error: freeVariables.recur encountered a syntax splice"
-    recur Node{name, children} = case (constrName name, children) of
-      ("defAfter", [_, MidIdentifier _ i, _, MidNode e]) -> scope (recur e) <* modify (M.insert i UnitV)
-      ("defAround", [_, _, _, MidNode e]) -> scope $ recur e
-      ("seqComp", [MidNode e1, _, MidNode e2]) -> S.union <$> recur e1 <*> recur e2
-      ("appli", [MidNode f, MidNode a]) -> S.union <$> recur f <*> recur a
-      ("fun", [_, MidIdentifier _ i, _, MidNode e]) -> scope $ do
+    recur = \case
+      N "defAfter" [_, Id i, _, e] -> scope (recur e) <* modify (M.insert i UnitV)
+      N "defAround" [_, _, _, e] -> scope $ recur e
+      N "seqComp" [e1, _, e2] -> S.union <$> recur e1 <*> recur e2
+      N "appli" [f, a] -> S.union <$> recur f <*> recur a
+      N "fun" [_, Id i, _, e] -> scope $ do
         modify $ M.insert i UnitV
         recur e
-      ("var", [MidIdentifier _ i]) ->
+      N "var" [Id i] ->
         boolean S.empty (S.singleton i) <$> gets (M.member i)
       _ -> return S.empty
 
-getUnscopedNodes :: Show sym => Node sym -> [Node sym]
-getUnscopedNodes SyntaxSplice{} = error $ "Compiler error: getUnscopedNodes encountered a syntax splice"
-getUnscopedNodes n@Node{name, children} = (n :) $ case (constrName name, children) of
-  ("defAfter", _) -> []
-  ("defAround", _) -> []
-  ("seqComp", [MidNode e1, _, MidNode e2]) -> getUnscopedNodes e1 ++ getUnscopedNodes e2
-  ("appli", [MidNode f, MidNode a]) -> getUnscopedNodes f ++ getUnscopedNodes a
-  ("fun", _) -> []
-  ("var", _) -> []
-  ("int", _) -> []
-  ("float", _) -> []
-  ("string", _) -> []
-  ("builtin", _) -> []
+getUnscopedNodes :: Show sym => NodeView sym -> [NodeView sym]
+getUnscopedNodes n = (n :) $ case n of
+  N "defAfter" _ -> []
+  N "defAround" _ -> []
+  N "seqComp" [e1, _, e2] -> getUnscopedNodes e1 ++ getUnscopedNodes e2
+  N "appli" [f, a] -> getUnscopedNodes f ++ getUnscopedNodes a
+  N "fun" _ -> []
+  N "var" _ -> []
+  N "int" _ -> []
+  N "float" _ -> []
+  N "string" _ -> []
+  N "builtin" _ -> []
   _ -> error $ "getUnscopedNodes got unknown / unsupported syntax construction: " ++ show n
 
 builtin :: (Ord sym, Show sym) => String -> Value sym r
@@ -239,6 +235,19 @@ arithmetic iop fop =
     (FloatV a, FloatV b) -> FloatV $ a `fop` b
     _ -> error $ "Arithmetic called with non-numeric arguments: " ++ show a ++ " and " ++ show b
 
+view :: Node sym -> NodeView sym
+view SyntaxSplice{} = error $ "Compiler error: view encountered a syntax splice"
+view Node{name, children} = N (constrName name) $ viewM <$> children
+  where
+    viewM (MidNode n) = view n
+    viewM (MidIdentifier _ i) = Id i
+    viewM (Basic (IntegerTok _ i)) = I i
+    viewM (Basic (FloatTok _ f)) = F f
+    viewM (Basic (StringTok _ s)) = S s
+    viewM _ = O
+
+data NodeView sym = N String [NodeView sym] | Id sym | S String | I Int | F Double | O deriving (Show)
+
 constrName :: String -> String
 constrName = tail . dropWhile (/= '#')
 
@@ -249,33 +258,35 @@ boolean :: a -> a -> Bool -> a
 boolean a _ True = a
 boolean _ a False = a
 
-errorSource :: Show sym => Node sym -> String -> a
-errorSource n message = error $ message ++ "\nProduced by:\n" ++ showCoreProgram (FixNode n)
+errorSource :: Show sym => NodeView sym -> String -> a
+errorSource n message = error $ message ++ "\nProduced by:\n" ++ showCoreProgramInner n
 
 showCoreProgram :: Show sym => FixNode NoSplice sym -> String
-showCoreProgram (FixNode n) = P.render . fst $ recur n
+showCoreProgram (FixNode n) = showCoreProgramInner $ view n
+
+showCoreProgramInner :: Show sym => NodeView sym -> String
+showCoreProgramInner = P.render . fst . recur
   where
-    recur Node{name, children} = case (constrName name, children) of
-      ("top", [MidNode e]) -> recur e
+    recur = \case
+      N "top" [e] -> recur e
 
-      ("defAfter", [_, MidIdentifier _ i, _, MidNode e]) -> (P.parens . P.hang (P.text "defAfter" <+> P.text (show i) <+> P.equals) 1 $ noSurround (recur e), AtomicShow)
-      ("defAround", [_, MidIdentifier _ i, _, MidNode e]) -> (P.parens . P.hang (P.text "defAround" <+> P.text (show i) <+> P.equals) 1 $ noSurround (recur e), AtomicShow)
+      N "defAfter" [_, Id i, _, e] -> (P.parens . P.hang (P.text "defAfter" <+> P.text (show i) <+> P.equals) 1 $ noSurround (recur e), AtomicShow)
+      N "defAround" [_, Id i, _, e] -> (P.parens . P.hang (P.text "defAround" <+> P.text (show i) <+> P.equals) 1 $ noSurround (recur e), AtomicShow)
 
-      ("seqComp", [MidNode e1, _, MidNode e2]) -> (noSurround (recur e1) <+> P.semi $+$ noSurround (recur e2), SeqCompShow)
+      N "seqComp" [e1, _, e2] -> (noSurround (recur e1) <+> P.semi $+$ noSurround (recur e2), SeqCompShow)
 
-      ("appli", [MidNode f, MidNode a]) -> (fSurround (recur f) <+> appliSurround (recur a), AppliShow)
-      ("fun", [_, MidIdentifier _ i, _, MidNode e]) -> (P.parens . P.hang (P.text "fun " <+> P.text (show i) <> P.text ".") 1 $ noSurround (recur e), AtomicShow)
-      ("exprfun", [_, MidIdentifier _ i, _, MidNode e]) -> (P.parens . P.hang (P.text "efun " <+> P.text (show i) <> P.text ".") 1 $ noSurround (recur e), AtomicShow)
+      N "appli" [f, a] -> (fSurround (recur f) <+> appliSurround (recur a), AppliShow)
+      N "fun" [_, Id i, _, e] -> (P.parens . P.hang (P.text "fun " <+> P.text (show i) <> P.text ".") 1 $ noSurround (recur e), AtomicShow)
+      N "exprfun" [_, Id i, _, e] -> (P.parens . P.hang (P.text "efun " <+> P.text (show i) <> P.text ".") 1 $ noSurround (recur e), AtomicShow)
 
-      ("var", [MidIdentifier _ i]) -> (P.text $ show i, AtomicShow)
-      ("int", [Basic (IntegerTok _ i)]) -> (P.int i, AtomicShow)
-      ("float", [Basic (FloatTok _ f)]) -> (P.double f, AtomicShow)
-      ("string", [Basic (StringTok _ s)]) -> (P.text $ show s, AtomicShow)
+      N "var" [Id i] -> (P.text $ show i, AtomicShow)
+      N "int" [I i] -> (P.int i, AtomicShow)
+      N "float" [F f] -> (P.double f, AtomicShow)
+      N "string" [S s] -> (P.text $ show s, AtomicShow)
 
-      ("builtin", [_, MidNode Node{name}]) -> (P.text "#" <> P.text (constrName name), AtomicShow)
+      N "builtin" [_, N name _] -> (P.text "#" <> P.text name, AtomicShow)
 
-      _ -> error $ "showCoreProgram encountered malformed / unsupported node: " ++ show name ++ " children: " ++ show children
-    recur SyntaxSplice{} = error $ "Compiler error: showCoreProgram encountered a syntax splice"
+      n -> error $ "showCoreProgram encountered malformed / unsupported node: " ++ show n
     appliSurround (s, AtomicShow) = s
     appliSurround (s, _) = P.parens s
     fSurround (s, SeqCompShow) = P.parens s
