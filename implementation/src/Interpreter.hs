@@ -159,7 +159,7 @@ freeVariables n = scope $ recur n
         modify $ M.insert i UnitV
         recur e
       ("var", [MidIdentifier _ i]) ->
-        boolean (S.singleton i) S.empty <$> gets (M.member i)
+        boolean S.empty (S.singleton i) <$> gets (M.member i)
       _ -> return S.empty
 
 getUnscopedNodes :: Show sym => Node sym -> [Node sym]
@@ -182,8 +182,12 @@ builtin "callcc" = FuncV $ \case
   FuncV f -> callCC $ f . FuncV
   value -> error $ "Callcc called with non-function argument: " ++ show value
 builtin "fix" = FuncV $ \case
-  valueF@(FuncV f) -> f valueF
+  valueF@(FuncV f) -> let fixF = FuncV $ apply (f fixF) in return fixF
   value -> error $ "Fix called with non-function argument: " ++ show value
+  where
+    apply mf v = mf >>= \case
+      FuncV f' -> f' v
+      value -> error $ "Function given to fix returned a non-function result: " ++ show value
 builtin "ref" = FuncV $ fmap RefV . liftIO . newIORef
 builtin "deref" = FuncV $ \case
   RefV ref -> liftIO $ readIORef ref

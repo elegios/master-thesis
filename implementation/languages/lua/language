@@ -30,6 +30,10 @@ syntax argList:ArgList = (e:Expression ("," es:Expression)*)? {
     (BExpression` f))
 }
 
+syntax debugPrint:Expression = "#" "debug" {
+  BExpression` fun x. fun _. #print x
+}
+
 syntax equal:Expression = a:Expression "==" b:Expression {
   #prec 8
   BExpression` #equal `t(a) `t(b)
@@ -61,6 +65,10 @@ syntax divide:Expression = a:Expression "/" b:Expression {
 
 syntax parens:Expression = "(" e:Expression ")" {
   e
+}
+
+syntax funcCallStmnt:Statement = f:Expression "(" args:ArgList ")" {
+  BExpression` efun _. efun _. `t(args) `t(f) #unit
 }
 
 syntax assignment:Statement =

@@ -7,3 +7,8 @@ function factorial(n)
   return n * factorial(n - 1)
 end
 
+function print(x)
+  #debug(x)
+end
+
+print(factorial(4))
