@@ -11,6 +11,10 @@ syntax intLit:Expression = i:Integer {
   BExpression` `int(i)
 }
 
+syntax strLit:Expression = s:String {
+  BExpression` `str(s)
+}
+
 // This has incorrect semantics when called with the wrong number of arguments
 // Also breaks precedence transformation, f must be high precedence, e and es must be low precence :(
 syntax funcCall:Expression =

@@ -7,8 +7,28 @@ function factorial(n)
   return n * factorial(n - 1)
 end
 
+function foo(n)
+  print("foo")
+  print(n)
+  if n == 0 then
+    return
+  end
+  bar(n-1)
+end
+
+function bar(n)
+  print("bar")
+  print(n)
+  if n == 0 then
+    return
+  end
+  foo(n-1)
+end
+
 function print(x)
   #debug(x)
 end
 
 print(factorial(4))
+
+foo(4)

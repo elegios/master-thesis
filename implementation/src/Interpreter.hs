@@ -9,13 +9,14 @@ module Interpreter (removeEFuns, interpret, showCoreProgram) where
 -- May still not be a good idea, but eh
 import System.IO.Unsafe (unsafePerformIO)
 
+import Control.Monad ((>=>))
 import Control.Monad.Cont (ContT, runContT, callCC)
-import Control.Monad.State (StateT, evalStateT, get, put, modify, gets)
+import Control.Monad.Reader (ReaderT, runReaderT, ask, local)
 import Control.Monad.Trans (liftIO)
 import Control.Arrow (first)
-import Data.IORef (IORef, newIORef, writeIORef, readIORef)
+import Data.IORef (IORef, newIORef, writeIORef, readIORef, modifyIORef')
 import Data.List (partition)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 
 import Text.PrettyPrint ((<+>), (<>), ($+$))
 import qualified Text.PrettyPrint as P
@@ -27,7 +28,8 @@ import Types.Lexer (Token(IntegerTok, StringTok, FloatTok))
 import Types.Construction (NoSplice)
 import Types.Ast
 
-type Interpreter sym r a = ContT r (StateT (M.Map sym (Value sym r)) IO) a
+type State sym r = IORef (M.Map sym (Value sym r))
+type Interpreter sym r a = ContT r (ReaderT (State sym r) IO) a
 
 data Value sym r = IntV Integer
                  | FloatV Double
@@ -74,7 +76,7 @@ removeEFuns :: (Ord sym, Show sym) => FixNode NoSplice sym -> FixNode NoSplice s
 removeEFuns (FixNode n) = FixNode $ evalEFuns M.empty n
 
 runInterpreter :: (Ord sym, Show sym, Show a) => Interpreter sym String a -> IO String
-runInterpreter m = evalStateT (runContT m (return . show)) M.empty
+runInterpreter m = newIORef M.empty >>= runReaderT (runContT m (return . show))
 
 evalEFuns :: Ord sym => M.Map sym (Node sym) -> Node sym -> Node sym
 evalEFuns _ SyntaxSplice{} = error $ "Compiler error: evalEFuns encountered a syntax splice"
@@ -97,26 +99,36 @@ evalEFuns m n@Node{name, children} = case (constrName name, children) of
     evalEFunsM m (Sequenced r children) = Sequenced r $ evalEFunsM m <$> children
     evalEFunsM _ m = m
 
+traceMark :: (Ord sym, Show sym, Show a) => NodeView sym -> Interpreter sym r a -> Interpreter sym r a
+traceMark n m = do
+  liftIO $ putStrLn ""
+  liftIO $ putStrLn $ "Entering: " ++ show n
+  ask >>= liftIO . (readIORef >=> putStrLn . show)
+  res <- m
+  liftIO $ putStrLn ""
+  liftIO $ putStrLn $ "Exiting: " ++ show n
+  liftIO $ putStrLn $ "=> " ++ show res
+  return res
+
 eval :: (Ord sym, Show sym) => NodeView sym -> Interpreter sym r (Value sym r)
-eval = \case
+eval n = case n of
   N "top" [n] -> evalWithArounds n
 
   N "defAfter" [_, Id i, _, e] ->
-    evalWithArounds e >>= modify . M.insert i >> return UnitV
+    evalWithArounds e >>= define i >> return UnitV
   N "defAround" _ -> return UnitV
 
   N "seqComp" [e1, _, e2] -> eval e1 >> eval e2
   N "appli" [f, e] -> eval f >>= \case
     FuncV f -> eval e >>= f
     value -> errorSource f $ "Attempted to apply non-function value: " ++ show value
-  N "fun" [_, Id i, _, e] -> get >>= \closure -> return . FuncV $ \v -> scope $ do
-    put closure
-    modify $ M.insert i v
+  N "fun" [_, Id i, _, e] -> ask >>= \closure -> return . FuncV $ \v -> local (const closure) . scope $ do
+    define i v
     evalWithArounds e
 
-  N "var" [Id i] -> gets (M.lookup i) >>= \case
-    Just v -> return v
-    Nothing -> error $ "Identifier " ++ show i ++ " is not defined"
+  N "var" [Id i] -> fromMaybe
+    (error $ "Identifier " ++ show i ++ " is not defined")
+    . M.lookup i <$> (ask >>= liftIO . readIORef)
 
   N "builtin" [_, N builtinName _] -> return $ builtin builtinName
 
@@ -127,37 +139,60 @@ eval = \case
   n -> error $ "Malformed / unsupported program node: " ++ show n
 
 evalWithArounds :: (Show sym, Ord sym) => NodeView sym -> Interpreter sym r (Value sym r)
-evalWithArounds n = scope $ do
-  defArounds <- mapM defAround (getUnscopedNodes n)
-  evalDefArounds $ catMaybes defArounds
+evalWithArounds n = do
+  bound <- M.keysSet <$> (ask >>= liftIO . readIORef)
+  let defArounds = defAround <$> getUnscopedNodes n
+  evalDefArounds $ removeBound bound <$> catMaybes defArounds
   eval n
   where
     defAround (N "defAround" [_, Id i, _, e]) =
-      Just . (, (i, evalWithArounds e)) <$> freeVariables e
-    defAround _ = return Nothing
+      Just (dependencies e, (i, evalWithArounds e))
+    defAround _ = Nothing
     evalDefArounds [] = return ()
     evalDefArounds defArounds = case partition (S.null . fst) defArounds of
       ([], notReady) -> error $ "Could not evaluate defArounds in a scope, these remain: " ++ show (fst . snd <$> notReady)
       (ready, notReady) -> do
         newM <- sequence . M.fromList $ snd <$> ready
-        modify $ M.union newM
+        unionDefine newM
         evalDefArounds $ removeBound (M.keysSet newM) <$> notReady
     removeBound bound = first (`S.difference` bound)
 
-freeVariables :: Ord sym => NodeView sym -> Interpreter sym r (S.Set sym)
-freeVariables = scope . recur
+dependencies :: (Show sym, Ord sym) => NodeView sym -> S.Set sym
+dependencies = recur zero
   where
-    recur = \case
-      N "defAfter" [_, Id i, _, e] -> scope (recur e) <* modify (M.insert i UnitV)
-      N "defAround" [_, _, _, e] -> scope $ recur e
-      N "seqComp" [e1, _, e2] -> S.union <$> recur e1 <*> recur e2
-      N "appli" [f, a] -> S.union <$> recur f <*> recur a
-      N "fun" [_, Id i, _, e] -> scope $ do
-        modify $ M.insert i UnitV
-        recur e
-      N "var" [Id i] ->
-        boolean S.empty (S.singleton i) <$> gets (M.member i)
-      _ -> return S.empty
+    zero = Just 0
+    inf = Nothing
+    recur applis = \case
+      N "appli" [builtinView -> "callcc", f] -> recur inc f
+      N "appli" [builtinView -> "fix", f] ->
+        if apCond (>= 1) then recur inc f else S.empty
+      (appliView -> [builtinView -> "plus", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "minus", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "multiply", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "divide", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "equal", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "cons", a, b]) -> S.union (recur zero a) (recur zero b)
+      (appliView -> [builtinView -> "if", c, th, el]) ->
+        S.unions [recur zero c, recur inc th, recur inc el]
+      N "appli" [f, a] -> S.union (recur inc f) (recur inf a)
+      N "defAfter" [_, _, _, e] -> recur inf e `S.difference` defs e
+      N "defAround" [_, _, _, e] -> recur inf e `S.difference` defs e
+      N "seqComp" [e1, _, e2] -> S.union (recur zero e1) (recur applis e2)
+      N "fun" [_, Id i, _, e] ->
+        if apCond (>= 1)
+          then S.delete i $ recur dec e `S.difference` defs e
+          else S.empty
+      N "var" [Id i] -> S.singleton i
+      _ -> S.empty
+      where
+        apCond :: (Int -> Bool) -> Bool
+        apCond cond = maybe True cond applis
+        inc = (+ 1) <$> applis
+        dec = subtract 1 <$> applis
+        def (N "defAfter" [_, Id i, _, _]) = S.singleton i
+        def (N "defAround" [_, Id i, _, _]) = S.singleton i
+        def _ = S.empty
+        defs n = S.unions $ def <$> getUnscopedNodes n
 
 getUnscopedNodes :: Show sym => NodeView sym -> [NodeView sym]
 getUnscopedNodes n = (n :) $ case n of
@@ -222,8 +257,11 @@ boolToValue :: Bool -> Interpreter sym r (Value sym r)
 boolToValue True = return TrueV
 boolToValue False = return FalseV
 
-scope :: Interpreter sym r a -> Interpreter sym r a
-scope m = get >>= \s -> m <* put s
+scope :: (Show sym) => Interpreter sym r a -> Interpreter sym r a
+scope m = do
+  definedSnapshot <- ask >>= liftIO . readIORef
+  newScope <- liftIO $ newIORef definedSnapshot
+  local (const newScope) m
 
 arithmetic :: Show sym => (Integer -> Integer -> Integer) -> (Double -> Double -> Double) -> Value sym r
 arithmetic iop fop =
@@ -235,6 +273,12 @@ arithmetic iop fop =
     (FloatV a, FloatV b) -> FloatV $ a `fop` b
     _ -> error $ "Arithmetic called with non-numeric arguments: " ++ show a ++ " and " ++ show b
 
+define :: Ord sym => sym -> Value sym r -> Interpreter sym r ()
+define i v = ask >>= \r -> liftIO $ modifyIORef' r (M.insert i v)
+
+unionDefine :: Ord sym => M.Map sym (Value sym r) -> Interpreter sym r ()
+unionDefine newM = ask >>= \r -> liftIO $ modifyIORef' r (M.union newM)
+
 view :: Node sym -> NodeView sym
 view SyntaxSplice{} = error $ "Compiler error: view encountered a syntax splice"
 view Node{name, children} = N (constrName name) $ viewM <$> children
@@ -245,6 +289,14 @@ view Node{name, children} = N (constrName name) $ viewM <$> children
     viewM (Basic (FloatTok _ f)) = F f
     viewM (Basic (StringTok _ s)) = S s
     viewM _ = O
+
+appliView :: NodeView sym -> [NodeView sym]
+appliView (N "appli" [f, a]) = appliView f ++ [a]
+appliView n = [n]
+
+builtinView :: NodeView sym -> String
+builtinView (N "builtin" [_, N name _]) = name
+builtinView _ = ""
 
 data NodeView sym = N String [NodeView sym] | Id sym | S String | I Int | F Double | O deriving (Show)
 
