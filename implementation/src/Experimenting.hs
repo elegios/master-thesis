@@ -78,10 +78,14 @@ resolveSource resolvedConstructions node = case resolveNames resolvedConstructio
 
 ambiguityParse :: M.Map String (Constr _) -> String -> String -> IO (FixNode _ String)
 ambiguityParse constructions startSym source = do
-  (results, report) <- parseFile parser source
-  putStrLn $ show report
+  (results, Report{expected, unconsumed}) <- parseFile parser source
   case results of
-    [] -> putStrLn "Nothing parsed" >> error "Cannot continue"
+    [] -> do
+      putStrLn $ "Got no parses of source file \"" ++ source ++ "\""
+      putStrLn $ "Expected: " ++ (show . S.toList $ S.fromList expected)
+      putStrLn $ "Unconsumed range: " ++ show (range unconsumed)
+      putStrLn $ "Unconsumed: " ++ show unconsumed
+      error $ "Cannot continue"
     [res] -> return res
     _ -> do
       forM_ (ambiguities results) $ \(r, reprs) -> do
