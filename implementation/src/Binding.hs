@@ -144,7 +144,7 @@ midRes (p, MidNode n) = mdo
       flattenBackwards sc res = mdo
         sendPast $ M.union newCloseBefore `alter` sc $ prevBeforeBindings
         -- TODO: check newCloseBefore overlap with inBindings
-        newCloseBefore <- (`M.difference` closeBefore) . fromMaybe M.empty . M.lookup sc <$> getFuture
+        newCloseBefore <- (`M.difference` closeBefore) . fromMaybe M.empty . M.lookup closeSc <$> getFuture
         result <- res
         sendPast $ M.fromList [(closeSc, closeBefore), (farSc, farBefore)]
         let (closeBefore, farBefore) =
