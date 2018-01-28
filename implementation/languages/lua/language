@@ -25,12 +25,14 @@ syntax funcCall:Expression =
 }
 
 // This is included to enable the Expressions to go to the top level Expression non-terminal, ideally it would be defined inline in funcCall, but then it would recurse into a lower precedence
-syntax argList:ArgList = (e:Expression ("," es:Expression)*)? {
+syntax argList:ArgList =
+  (e:Expression ("," es:Expression)*)?
+{
   BExpression` efun f. `t(
     foldl es prev
-      (BExpression` `t(prev) `t(es))
+      (BExpression` (#deref `t(prev)) `t(es))
     foldl e prev
-      (BExpression` `t(prev) `t(e))
+      (BExpression` (#deref `t(prev)) `t(e))
     (BExpression` f))
 }
 
@@ -40,38 +42,40 @@ syntax debugPrint:Expression = "#" "debug" {
 
 syntax equal:Expression = a:Expression "==" b:Expression {
   #prec 8
-  BExpression` #equal `t(a) `t(b)
+  BExpression` #equal (#deref `t(a)) (#deref `t(b))
 }
 
 syntax plus:Expression = a:Expression "+" b:Expression {
   #prec 11
   #assoc left
-  BExpression` #plus `t(a) `t(b)
+  BExpression` #plus (#deref `t(a)) (#deref `t(b))
 }
 
 syntax minus:Expression = a:Expression "-" b:Expression {
   #prec 11
   #assoc left
-  BExpression` #minus `t(a) `t(b)
+  BExpression` #minus (#deref `t(a)) (#deref `t(b))
 }
 
 syntax times:Expression = a:Expression "*" b:Expression {
   #assoc left
   #prec 12
-  BExpression` #multiply `t(a) `t(b)
+  BExpression` #multiply (#deref `t(a)) (#deref `t(b))
 }
 
 syntax divide:Expression = a:Expression "/" b:Expression {
   #assoc left
   #prec 12
-  BExpression` #divide `t(a) `t(b)
+  BExpression` #divide (#deref `t(a)) (#deref `t(b))
 }
 
 syntax parens:Expression = "(" e:Expression ")" {
   e
 }
 
-syntax funcCallStmnt:Statement = f:Expression "(" args:ArgList ")" {
+syntax funcCallStmnt:Statement =
+  f:Expression "(" args:ArgList ")"
+{
   BExpression` efun _. efun _. `t(args) `t(f) #unit
 }
 
@@ -87,7 +91,8 @@ syntax local:Statement =
 {
   #bind x after
   BExpression` efun _. efun _.
-    defAfter `id(x) = #ref `t(foldr e _ (e) (BExpression` #unit))
+    defAfter `id(x) = #ref
+      (#deref `t(foldr e _ (e) (BExpression` #unit)))
 }
 
 syntax block:Statement = "do" b:Block "end" {
@@ -100,15 +105,15 @@ syntax if:Statement =
   elseif:("elseif" econd:Expression "then" ethen:Block)*
   ("else" else:Block)? "end"
 {
-  BExpression` efun return. efun break. #if `t(cond)
+  BExpression` efun return. efun break. #if (#deref `t(cond))
     (fun _. `t(then) return break)
     (fun _. `t(
       foldr elseif next
-        (BExpression` #if `t(econd)
+        (BExpression` #if (#deref `t(econd))
           (fun _. `t(ethen) return break)
           (fun _. `t(next)))
       foldr else _
-        (BExpression` else return break)
+        (BExpression` `t(else) return break)
       (BExpression` #unit)))
 }
 
@@ -118,7 +123,7 @@ syntax while:Statement =
 {
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _.
-      #if `t(cond)
+      #if (#deref `t(cond))
         (fun _.
           (`t(body) return break;
            repeat #unit))
@@ -131,7 +136,7 @@ syntax repeat:Statement =
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _. (
       `t(body) return break;
-      #if `t(cond)
+      #if (#deref `t(cond))
         (fun _. repeat #unit)
         (fun _. #unit))))
 }
@@ -144,11 +149,15 @@ syntax numFor:Statement =
 {
   #bind i in body
   BExpression` efun return. efun _.
-    (defAfter step = `t(foldr step _ (step) (BExpression` 1));
+    (defAfter step = #deref
+      `t(foldr step _ (step) (BExpression` 1));
+     defAfter end = #deref `t(e);
      #callcc (fun break. #fix (fun rep. fun x.
        (defAfter `id(i) = x;
-        `t(body) return break;
-        rep (#plus x step)))
+        #if (#equal x end)  // TODO: doesn't handle a step that misses the last
+          (fun _. `t(body) return break)
+          (fun _. (`t(body) return break;
+                   rep (#plus x step)))))
        `t(s)))
 }
 
@@ -186,7 +195,7 @@ syntax blockContent:Block =
 syntax return:Return = "return" e:Expression? {
   BExpression` efun return. efun break. `t(
     foldr e _
-      (BExpression` return `t(e))
+      (BExpression` return (#deref `t(e)))
     (BExpression` return #unit))
 }
 

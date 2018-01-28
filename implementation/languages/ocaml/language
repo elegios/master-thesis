@@ -3,7 +3,10 @@ syntax top:File = ts:Top+ {
   foldl1 ts prev (BExpression` `t(prev); `t(ts))
 }
 
-syntax topLet:Top = "let" x:Identifier args:Pattern* "=" e:Expression (";" ";")? {
+syntax topLet:Top =
+  "let" x:Identifier args:Pattern*
+  "=" e:Expression (";" ";")?
+{
   #bind x after
   #scope (args e)
   BExpression` defAfter `id(x) = `t(
@@ -24,7 +27,10 @@ syntax funApp:Expression = f:Expression arg:Expression {
   BExpression` `t(f) `t(arg)
 }
 
-syntax letExpr:Expression = "let" x:Identifier args:Pattern* "=" e:Expression "in" body:Expression {
+syntax letExpr:Expression =
+  "let" x:Identifier args:Pattern*
+  "=" e:Expression "in" body:Expression
+{
   #prec 2
   #bind x in body
   #scope (body)
@@ -38,7 +44,10 @@ syntax letExpr:Expression = "let" x:Identifier args:Pattern* "=" e:Expression "i
   `t(body)
 }
 
-syntax match:Expression = "match" e:Expression "with" arm:("|" p:Pattern "->" body:Expression)+ {
+syntax match:Expression =
+  "match" e:Expression "with"
+  arm:("|" p:Pattern "->" body:Expression)+
+{
   #scope arm:(p body)
   #scope (e)
   #prec 1
@@ -70,7 +79,9 @@ syntax parens:Expression = "(" e:Expression ")" {
 }
 
 // NOTE: ideally :: would be interpreted as a single token here, but : is one of the symbol tokens that do not merge
-syntax cons:Expression = h:Expression ":" ":" t:Expression {
+syntax cons:Expression =
+  h:Expression ":" ":" t:Expression
+{
   #assoc right
   #prec 10
   BExpression` #cons `t(h) `t(t)
@@ -87,7 +98,9 @@ syntax unitLit:Expression = "(" ")" { BExpression` #unit }
 syntax IntLit:Expression = n:Integer { BExpression``int(n) }
 syntax FloatLit:Expression = f:Float { BExpression``float(f) }
 syntax StringLit:Expression = s:String { BExpression``str(s) }
-syntax listLit:Expression = "[" (e:Expression (";" es:Expression)*)? "]" {
+syntax listLit:Expression =
+  "[" (e:Expression (";" es:Expression)*)? "]"
+{
   foldr e next
     (BExpression` #cons `t(e) `t(next))
   foldr es next
@@ -121,7 +134,9 @@ syntax bindPat:Pattern = id:Identifier {
 syntax wildcardPat:Pattern = "_" {
   BExpression` efun _. efun _. #unit
 }
-syntax listPat:Pattern = "[" (p:Pattern (";" ps:Pattern)*)? "]" {
+syntax listPat:Pattern =
+  "[" (p:Pattern (";" ps:Pattern)*)? "]"
+{
   BExpression` efun fail. efun val.
     `t(foldr p next
          (BExpression` efun prev.
@@ -150,6 +165,8 @@ syntax consPat:Pattern = h:Pattern ":" ":" t:Pattern {
     (#if (#equal val #nil)
        (fun _. fail #unit)
        (fun _. #unit);
-     `t(h) fail (#head val);
-     `t(t) fail (#tail val))
+     defAfter headValue = #head value;
+     `t(h) fail headValue;
+     defAfter tailValue = #tail value;
+     `t(t) fail tailValue)
 }

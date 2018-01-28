@@ -46,14 +46,33 @@ Kommer så småningom
 % Mainmatter is where the actual contents of the thesis goes
 \mainmatter
 
+% TODO: figure out and / or define in thesis consistent terms for a bunch of things:
+% - instance of a syntax construction
+% - syntax construction
+% - syntax type
+% - sub-node in syntax construction, i.e. all things that are declared like a:Expression in the syntax part
+% - possibly a sub-node in an instance of a syntax construction?
+% - underlying language
+% - core language
+% - non-core languages, i.e. languages built on top of some other language
+% - the various parts of a syntax construction declaration:
+%   - name and type
+%   - syntactic description
+%   - implementation (maybe expansion specification / description / something)
+%   - extra info, e.g. #scope, #bind, #prec, etc.
+% - a consistent use of symbol, identifier, and the like
+
+% TODO: probably use different syntax for folds in the thesis, while mentioning that the implementation uses a different syntax for ease of implementation?
+% TODO: should i write implementations as though `t, `id and the like are not required, merely mention that an annotation is required in the current implementation?
+
 
 \chapter{Introduction} \label{sec:introduction}
 
 The implementation of a programming language---be it an interpreter or a compiler---tends to be divided into phases, each dealing with their own aspect of the language. For example, a parser details the syntax of the language, while name resolution handles names, scoping, and namespaces. A type checker details part of the semantics, how different language constructions can be combined. This means that the implementation of any single language construction is spread throughout the language implementation, necessitating it be considered as a whole. Adding a new construction requires changes in many places.
 
-Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{plt-tr1,Hickey2008,Matsakis2014}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally.
+Some languages include methods to add new constructions within the language itself, without extending the implementation; one important one being macros \cite{Flatt2010Reference:-Rack,Hickey2008The-Clojure-pro,Matsakis2014The-rust-langua}. Macros add new constructions by defining them in terms of previously existing constructions. Evaluation proceeds by expanding each macro, possibly recursively, until only base language constructions remain, at which point the program can be evaluated normally.
 
-When looking at macros in languages that are commonly used today a few problems remain however. This thesis will focus on two broad categories of such problems: abstraction (see section \ref{sec:problem-abstraction}) and syntax (see section \ref{sec:problem-syntax}). These problems have been solved separately (see sections \ref{sec:abstraction-solutions} and \ref{sec:syntax-solutions}) as well as in conjunction (see section \ref{sec:full-solutions}). This thesis falls into the second camp and largely addresses both problems, with a new set of trade-offs and a different unit of composition. See section \ref{sec:solution-overview} for an overview and section \ref{sec:thesis-solution} for more details.
+When looking at macros in languages that are commonly used today a few problems remain however. This thesis will focus on two broad categories of such problems: abstraction (see section \ref{sec:problem-abstraction}) and syntax (see section \ref{sec:problem-syntax}). These problems have been solved separately (see sections \ref{sec:abstraction-solutions} and \ref{sec:syntax-solutions}) as well as in conjunction (see section \ref{sec:full-solutions}). This thesis falls into the second camp and largely addresses both problems, with a new set of trade-offs and a different unit of composition. See section \ref{sec:syntax-constructions}.
 
 \section{Problems of Abstraction} \label{sec:problem-abstraction}
 
@@ -61,7 +80,7 @@ The abstractions provided by macros can easily become leaky abstractions without
 
 \subsection{Name Capture}
 
-A naive macro expander using textual replacement will introduce accidental name capture. For example, given the following macro (using Racket \cite{plt-tr1} syntax) intended to calculate $2a + b$ while computing $a$ only once:
+A naive macro expander using textual replacement will introduce accidental name capture. For example, given the following macro (using Racket \cite{Flatt2010Reference:-Rack} syntax) intended to calculate $2a + b$ while computing $a$ only once:
 
 \begin{minted}{racket}
 (define-syntax-rule (double-add a b)
@@ -118,6 +137,16 @@ One advantage of macros is their ability to essentially introduce syntactic suga
 
 Such restrictions simplify parsing the language, since it ensures the grammar is fixed and cannot be changed during parsing.
 
+\section{Research Question}
+
+A few attempts at a research question.
+
+\begin{itemize}
+\item Can programming languages be designed in a composable way, where the unit of composition is individual features, and syntax and semantics for each feature is specified together?
+
+\item Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
+\end{itemize}
+
 \section{Contributions}
 
 This thesis contributes the following:
@@ -134,7 +163,50 @@ This thesis contributes the following:
 
 \section{Context Free Grammars}
 
-\chapter{Syntax Constructions}
+\chapter{Related Work}
+
+The related work is separated roughly based on the degree to which they solve the two problems introduced in section~\ref{sec:introduction}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
+
+\section{Abstraction Solutions} \label{sec:abstraction-solutions}
+
+Lisps have long had macro systems that do not introduce accidental name capture, mostly through renaming (TODO: references). The latest iteration of Racket's \cite{Flatt2010Reference:-Rack} macro expander instead achieves binding hygiene by using sets of scopes \cite{Flatt2016Binding-As-Sets}. Somewhat simplified, a set of scopes is attached to each identifier, namely the scopes that contain it. To find the binding referred to by an identifier with set $s_i$, find the binding with set $s_b \subseteq s_i$ such that for all other sets $s'_b \subseteq s_i$ attached to binders, $s'_b \subset s_b$, i.e. $s_b$ is the largest subset of $s_i$. The authors report the implementation as simpler to follow, and while ambiguous references are possible they do not appear in practice.
+
+$\lambda_m$ \cite{Herman2010A-Theory-of-Typ} takes a different route and is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
+
+Some notable differences exist however:
+\begin{itemize}
+  \item Bindings in $\lambda_m$ macros are always nested, in the sense that bindings are never available outside of the macro that introduced them. In contrast, consider a local variable in e.g. C:
+  \begin{minted}{c}
+  int foo = 4;
+  printf("foo: %d\n", foo);
+  \end{minted}
+  The local variable \mintinline{c}{foo} is available for the remainder of the scope, potentially long after the declaration has ended. This thesis handles both kinds of binding.
+  \item TODO: EBNF, recursion and union types
+\end{itemize}
+
+In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs.
+
+Romeo \cite{Stansifer2014Romeo} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$.
+
+\section{Syntax Solutions} \label{sec:syntax-solutions}
+
+The syntax definition formalism SDF \cite{Heering1989The-syntax-defi} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually, allowing non-terminals to be spread across files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
+
+A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
+
+SDF has also been extended to handle layout-sensitive grammars \cite{Erdweg2013Layout-sensitiv} through extra annotations, thus retaining the declarative nature of a grammar.
+
+\textcite{Silkensen2013Well-Typed-Isla} instead consider the problem of combining already constructed grammars in a scalable way. The main observation they use is that most domain specific languages deal with values of different types. With this in mind the different grammars can use these types, for example using non-terminals such as \mintinline{text}{Matrix} instead of \mintinline{text}{Expression}. Additionally, if identifiers can be specified to have a specific type (e.g. \mintinline{text}{Matrix}) they can be used as islands in island parsing. By using these two things the authors present a parsing algorithm that needs to examine far fewer possible parsings, even in the presence of many DSLs. The precise scalability claim can be found in the paper.
+
+\section{Combined Solutions} \label{sec:full-solutions}
+
+SoundX \cite{Lorenzen2016Sound-type-depe} is a system for specifying extensible languages. It uses SDF (see section \ref{sec:syntax-solutions}) to specify syntax and adds type rules and type judgements. A language extension is specified as a set of rewritings (macros) and type rules for the rewritings. Macros in SoundX are checked to guarantee that they preserve abstraction on a type level, i.e. they introduce no type errors during rewriting. Similarly, code can be type checked without performing rewriting.
+
+The system works through a rewriting of derivation trees, not pure syntax, thus macros have access to not only types explicit in a program but also derived types.
+
+Copper \cite{Van-Wyk2007Context-aware-s} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
+
+\chapter{Syntax Constructions} \label{sec:syntax-constructions}
 
 This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and capabilities. Section~\ref{sec:design-goals} will reiterate and clarify the goals of the design to guide the later sections (\ref{sec:constructions-and-types} through \ref{sec:design-implementation}), which will build the constructions one piece at a time.
 
@@ -222,7 +294,7 @@ The actual parsing is guided by the syntax constructions. If we for a moment dis
 
 \synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vecLit} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences. Later on, in section~\ref{sec:design-implementation}, the use of EBNF operators will have a larger impact, but for now they are mereply conveniences.
 
-The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple syntax constructions to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989}.
+The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple syntax constructions to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989The-syntax-defi}.
 
 \subsection{Ambiguity}
 
@@ -243,7 +315,7 @@ print_string a
 \label{lst:nested-binding-example}
 \end{listing}
 
-Listing~\ref{lst:nested-binding-example} demonstrates simple let bindings. A let binding introduces bound names to a sub-tree (\mintinline{ocaml}|a| is bound in \mintinline{ocaml}|print_string a| in this case). The syntax construction below codifies these semantics.
+Listing~\ref{lst:nested-binding-example} demonstrates simple let bindings. A let binding introduces bound names to a sub-tree (\mintinline{ocaml}{a} is bound in \mintinline{ocaml}{print_string a} in this case). The syntax construction below codifies these semantics.
 
 \begin{minted}{text}
 syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression {
@@ -274,16 +346,25 @@ System.out.println(first + second + third);  // Error: cannot find second or thi
 These semantics can be described using only capabilities introduced so far, but with some drawbacks. For example, variable declaration, scope introduction and method call could be specified as follows:
 
 \begin{minted}{text}
-syntax declaration:Statement = t:Type x:Identifier "=" e:Expression ";" next:Statement {
+syntax declaration:Statement =
+  t:Type x:Identifier "=" e:Expression
+  ";" next:Statement
+{
   #bind x in next
   <...>
 }
 
-syntax scope:Statement = "{" s:Statement "}" ";" next:Statement {
+syntax scope:Statement =
+  "{" s:Statement "}"
+  ";" next:Statement
+{
   <...>
 }
 
-syntax call:Statement = e:Expression "(" (a:Expression ("," as:Expression)*)? ")" ";" next:Statement {
+syntax call:Statement =
+  e:Expression "(" (a:Expression ("," as:Expression)*)? ")"
+  ";" next:Statement
+{
   <...>
 }
 
@@ -315,10 +396,14 @@ function bar(n) {
 \label{lst:javascript-function-binding-example}
 \end{listing}
 
-Instead, a syntax construction is allowed to specify that an identifier is bound before and / or after itself, thus permitting bindings that are not limited to sub-trees. Additionally explicit scopes can be introduced to limit bindings. The syntax construction below gives has the desired binding semantics.
+Instead, a syntax construction is allowed to specify that an identifier is bound before and / or after itself, thus permitting bindings that are not limited to sub-trees. Additionally explicit scopes can be introduced to limit bindings. The syntax construction below has the desired binding semantics.
 
 \begin{minted}{text}
-syntax funcDecl:Statement = "function" f:Identifier "(" (a:Identifier ("," as:Identifier)*)? ")" "{" body:Statement+ "}" {
+syntax funcDecl:Statement =
+  "function" f:Identifier "("
+  (a:Identifier ("," as:Identifier)*)?
+  ")" "{" body:Statement+ "}"
+{
   #bind f before
   #bind f after
   #bind f, a, as in body
@@ -363,9 +448,9 @@ syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression
 }
 \end{minted}
 
-Here a let expression is expanded into a lambda expression and application. \mintinline{text}|Expression`|, \mintinline{text}|`id| and \mintinline{text}|`t| assist with disambiguation in parsing. The underlying type of expressions must agree. It is worth noting here that during expansion all sub-expressions (e.g. \mintinline{text}|x| and \mintinline{text}|body| above) are treated as atomic, no inspection or modification is permitted.
+Here a let expression is expanded into a lambda expression and function application. \mintinline{text}{BaseExpression`}, \mintinline{text}{`id} and \mintinline{text}{`t} assist with disambiguation in parsing, see Section~\ref{sec:disambiguation-implementation} for more details. The underlying type of expressions must agree. It is worth noting here that during expansion all sub-expressions (e.g. \mintinline{text}{x} and \mintinline{text}{body} above) are treated as atomic, no inspection or modification is permitted.
 
-If the original syntax construction contains EBNF operators some elements may occur multiple times, forming lists of syntactical elements. These are included in the implementation using folds:
+If the original syntax construction contains EBNF operators some elements may occur multiple times, forming lists of syntactical elements. These may not be used directly in the implementation, where only singular syntactical elements are allowed. To produce a singular syntactical element from a list one may instead use a fold:
 
 \begin{minted}{text}
 syntax switch:Expression = "switch" e:Expression "{" cases:("case" test:Expression ":" result:Expression)* "default" ":" default:Expression "}" {
@@ -381,58 +466,280 @@ syntax switch:Expression = "switch" e:Expression "{" cases:("case" test:Expressi
 
 Here a switch is translated to a simple series of ifs, checking for equality with each case in turn. The fold expression takes four arguments: what list to fold over, the name of the result so far (the accumulator), the expression that will be used to construct the next result, and the initial value. The example uses a right fold, additionally left fold and versions without an initial value are available, the latter only being usable if the list contains at least one value (i.e. it was constructed using the ''+'' operator, not ''*'' or ''?'').
 
+\subsection{Disambiguation in Implementation Parsing} \label{sec:disambiguation-implementation}
+
+The implementation body of a syntax construction is intended to be written in some underlying language as a sort of template, into which the child nodes of the syntax construction can be slotted to produce the expanded abstract syntax tree. Parsing this template turns out to be ambiguous without certain extra precautions, which are motivated and described in the next two sections.
+
+\subsubsection{Template Type Annotations}
+
+As mentioned previously the underlying types must agree throughout the implementation, for example the expanded syntax tree must have the same underlying type as the syntax construction itself; i.e. the implementation uses structural typing.
+
+Thus, when parsing the implementation body any syntax construction that shares an underlying syntax type is valid. However, since the core language is likely to be simple, but flexible, it is likely to have few syntax types. For example, the core language used during evaluation (Section~\ref{sec:evaluation}) contains a single syntax type: \mintinline{text}{BExpression}. As such, many non-core languages will have syntax types that share an underlying type, which becomes a problem if their concrete syntax also overlaps.
+
+As an example, consider the code \mintinline{ocaml}{[1]} in OCaml. Depending on context it may be parsed as a list literal, evaluating to a list with the single element \mintinline{ocaml}{1}, or as a pattern, matching a list containing \mintinline{ocaml}{1} as its only element. When implementing these constructions using syntax constructions they would have different syntax types, \mintinline{text}{Expression} and \mintinline{text}{Pattern}, respectively. Their underlying type would however be shared, assuming they use the aforementioned core language. With this in mind, the following syntax construction does not parse unambiguously:
+
+\begin{minted}{text}
+syntax oneList:Expression = "one" {
+  [1]
+}
+\end{minted}
+
+To solve this problem an explicit type annotation is required:
+
+\begin{minted}{text}
+syntax oneList:Expression = "one" {
+  Expression` [1]
+}
+\end{minted}
+
+\subsubsection{Splicing Child Nodes}
+
+Using child nodes in the implementation, splicing them into the template, also requires a form of type annotation, but this comes more out of a limitation of the current implementation than of a need for the general method.
+
+Consider the implementation of the syntax construction \mintinline{text}{postfixAdd} below, assuming the two preceeding syntax construction are in scope and available for use.
+
+\begin{minted}{text}
+syntax add:Expression = a:Expression "+" b:Expression {
+  builtin
+}
+
+syntax var:Expression = id:Identifier {
+  builtin
+}
+
+syntax lit:Expression = int:Integer {
+  builtin
+}
+
+syntax postfixAdd:Expression = a:Expression b:Expression "+" {
+  Expression` a + b
+}
+\end{minted}
+
+The appearances of \mintinline{text}{a} and \mintinline{text}{b} in the body are meant to refer to the child nodes declared in the syntactic description. When parsing the body they must thus be parsed as unknown syntax constructions of type \mintinline{text}{Expression}, even though they syntactically appear as identifiers.
+
+However, the parser in the current implementation is based entirely on context free grammars and can thus not use the information from the syntax description when parsing the body. Parsing the above syntax construction with a context free parser would require trying to interpret each identifier either as an identifier, or a spliced child node, and then disambiguating afterwards.
+
+This turns out to create a massively ambiguous grammar. In the example above the identifier \mintinline{text}{a} can be interpeted as one of four things:
+\begin{enumerate}
+  \item A normal identifier, thus parsing as a \mintinline{text}{var} syntax construction containing an identifier with the symbol ''a''.
+  \item A spliced identifier, thus parsing as a \mintinline{text}{var} syntax construction containing an identifier with an unknown symbol.
+  \item A spliced integer, thus parsing as a \mintinline{text}{lit} syntax construction containing an integer with an unknown value.
+  \item A spliced \mintinline{text}{Expression}.
+\end{enumerate}
+
+The first two cases could plausably be handled in the same way, reducing it to three valid parses. The total number of parse trees produced with this grammar is nonetheless still exponential in the number of identifiers in the source. Introducing syntax for splicing disambiguates the first case from the remaining three, and requiring a limited form of type tagging disambiguates between the remaining three.
+
+The solution used in this thesis requires tagging to distinguish a spliced identifier, integer, float, string or syntax construction. Tagging a splice as a syntax construction, rather than a specific syntax type, appears sufficient. No ambiguous implementations have appeared in practice thus far, though they are still possible.
+
 \section{Proof of Termination} \label{sec:proof-termination}
 
 \section{Proof of Soundness} \label{sec:proof-no-errors}
 
-\chapter{Evaluation}
+\chapter{Evaluation} \label{sec:evaluation}
 
-\section{An Imperative Language} \label{sec:imperative-eval}
+% TODO: introduce the different aspects of evaluation: expressibility and intuitiveness of expressibility in first two sections (with mention of validation), then composability in next 1-2 sections, a (probably short) performance section.
+% Things not present in list above that need to be incorporated somewhere: error reporting (i.e. preservation of abstraction), move properties here?, discussion on expressiveness independent of language? (to explore inexpressible, but uncommon/unlikely features)
+
+For evaluation two programming languages have been implemented: a subset of Lua and a subset of OCaml. The former evaluates the expressibility of a relatively standard imperative language, while the latter evaluates the expressibility of  a relatively standard functional language, with an extra focus on pattern matching.
+
+For each of the languages a few interesting features are discussed, including their implementation, along with several weaknesses of the system.
+
+\section{Core Language} \label{sec:core-language}
+
+Syntax constructions does not specify a core language, but instead treats any construction marked as ''builtin'' as a core language construct, expanding all constructions encountered until only builtin constructions remain. However, to evaluate the expressibility of semantics for syntax constructions such a language must exist. This section describes the core language used throughout the evaluation section.
+
+Both languages are implemented using the same underlying language, i.e. the same set of syntax constructions marked as builtin (for more information, see section~\ref{sec:design-implementation}). The core language is a largely functional language using curried functions and eager execution, with a few additions:
+\begin{itemize}
+  \item Sequential composition.
+  \item Non-nested bindings, i.e \mintinline{text}{defAfter} and \mintinline{text}{defAround}. % TODO: probably refer to a previous definition / explanation of this
+  \item Builtin, language provided values using special syntax, such as \mintinline{text}{#unit}, \mintinline{text}{#true} and \mintinline{text}{#plus}. Most have fairly straightforward meaning, but a few deserve some additional explanation:
+  \begin{description}
+    \item[\mintinline{text}{#if}] A function taking three arguments, first a condition, i.e. a boolean value, then two unary functions that ignore their argument. The result of the entire expression One of them will be called with \mintinline{text}{#unit}, depending on the value of the condition, %TODO
+    \item[\mintinline{text}{#fix}]
+    \item[\mintinline{text}{#callcc}]
+    \item[\mintinline{text}{#ref}, \mintinline{text}{#deref} and \mintinline{text}{#assign}]
+  \item Expression functions. Syntactically similar to a function (\mintinline{text}{efun x. body} vs. \mintinline{text}{fun x. body}) these work around a limitation in syntax constructions. More will be said about them later, but for now they are functions that must be applied immediately. They are used to work around the atomic nature of sub-constructions.
+  \end{description}
+\end{itemize}
+
+\subsection{Expression Functions} \label{sec:efun-drawbacks}
+
+% TODO: probably write about efuns and their drawbacks separately from each language below, seems weird to either duplicate it, or to just have it in one of the language sections and not the other, since they should have no dependenceies on each other
+
+% TODO: own thoughts, to be made into actual evaluation thoughts later
+Control flow altering things are difficult to include without either explicit support for the particular control flow, or names that can be bound across constructions without appearing in the original source code. The return statement must be able to connect to the return point, without anything outside it altering it. Could be done if the construction returned a "function", that takes the return point and produces the actual expanded code, but that is not possible at present.
+
+- The efun builtin is unsound, but something like it is required to implement some of the things when each sub-construction is atomic
+- fix seems reasonable
+- callcc probably reasonable, but probably not necessary to have the full support, instead basically have it be a block that you can break out of by calling a function. Not entirely sure if that can be represented in a sound way with the current system
+- ocaml _ pattern and list literals are either inescapably ambiguous, or require rewritings that require knowledge of grammars (which we're trying to avoid)
+- funccall in lua requires splitting out the argument list, to ensure correct recursion (the call must have high precedence, but the argument list must reach for top level expressions)
+- binding expressibility has thus far been sufficient, nothing I've wanted to express has been impossible.
+- defAround allows for recursive definitions, which will be incorrect for most/many languages, but there is nothing that preserves that abstraction
+
+- (current) absence of checking probably means that at least one implementation is incorrect, only working because the implemented languages are sane when they introduce names. I suspect the general case, when any syntax type can bind in any way, is broken.
 
 \section{A Functional Language} \label{sec:functional-eval}
 
-\chapter{Related Work}
+% TODO: ref ocaml
+The functional language implemented here is a subset of OCaml, with a focus on supporting pattern matching. This section will not examine the entirety of the language definition, most syntax constructions used are fairly simple and rote, focus will instead be placed on the implementation of patterns and pattern matching, as well as additional difficult to express particulars of the language. The full language description can be found in Appendix~\ref{sec:appendix-ocaml}.
 
-The related work is separated roughly based on the degree to which they solve the two problems introduced in section~\ref{sec:introduction}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
+\subsection{Patterns and Pattern Matching}
 
-\section{Abstraction Solutions} \label{sec:abstraction-solutions}
+% TODO: this should probably be split out rather a lot, between evaluation, results and discussion. First for "this will be done", second for "this is how it was done", third for "these things were good, these were bad" and possibly "this is how it might be done better".
 
-Lisps have long had macro systems that do not introduce accidental name capture, mostly through renaming (TODO: references). The latest iteration of Racket's \cite{plt-tr1} macro expander instead achieves binding hygiene by using sets of scopes \cite{Flatt:2016:BSS:2837614.2837620}. Somewhat simplified, a set of scopes is attached to each identifier, namely the scopes that contain it. To find the binding referred to by an identifier with set $s_i$, find the binding with set $s_b \subseteq s_i$ such that for all other sets $s'_b \subseteq s_i$ attached to binders, $s'_b \subset s_b$, i.e. $s_b$ is the largest subset of $s_i$. The authors report the implementation as simpler to follow, and while ambiguous references are possible they do not appear in practice.
+% TODO: ensure that there is proper description of what a syntax type is supposed to be, i.e. something a user might know about, such as expression, statement, pattern, etc.
 
-$\lambda_m$ \cite{Herman2010} takes a different route and is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
+Pattern matching is a feature found in most functional languages, allowing the programmer to simultaneously check the structure of data and extract internal data from it. Patterns describe the expected shape of the data, as well as what internal data should be extracted and bound to names for later use. They can be arbitrarily nested, allowing a simple way of expressing a potentially quite tedious checking process. Listing~\ref{lst:ocaml-match-example} shows an example of a match expression in OCaml, wherein the first match arm with a matching pattern is selected for execution.
 
-Some notable differences exist however:
+\begin{listing}[ht]
+\begin{minted}{ocaml}
+let result = match [[4]] with
+  | [[a], b] -> print_string "a is int, b is list of int, both bound"
+  | _ :: _ :: _ -> print_string "nothing bound, at least two elements in list"
+  | [[4]] -> print_string "nothing bound"
+  | _ -> print_string "nothing else matched"
+\end{minted}
+\caption{Example match expression in OCaml}
+\label{lst:ocaml-match-example}
+\end{listing}
+
+The above suggests a fairly clear formulation of the syntax and bindings of the match expression using syntax constructions.
+
+\begin{minted}{text}
+syntax match:Expression = "match" e:Expression "with" arm:("|" p:Pattern "->" body:Expression)+ {
+  #scope arm:(p body)
+  #scope (e)
+  <...>
+}
+\end{minted}
+
+Patterns expose their bound names using \mintinline{text}{#bind x after} and each match arm introduces a new scope containing its pattern and expression. The patterns themselves are also simple to express in terms of syntax and bindings:
+
+\begin{minted}{text}
+syntax wildcardPat:Pattern = "_" {
+  <...>
+}
+
+syntax bindPat:Pattern = id:Identifier {
+  #bind id after
+  <...>
+}
+
+syntax intLitPat:Pattern = i:Integer {
+  <...>
+}
+
+syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
+  #assoc right
+  #prec 10
+  <...>
+}
+\end{minted}
+
+% TODO: this needs to refer to some more thorough description / discussion of the lexer and its choices
+
+The slightly peculiar syntax description for the cons pattern is due to the lexer used, a single colon is always parsed as a single symbol, and each syntax literal in the description must be a single token. Implementing each of these is where problems arise; each pattern must do two things:
+
 \begin{itemize}
-  \item Bindings in $\lambda_m$ macros are always nested, in the sense that bindings are never available outside of the macro that introduced them. In contrast, consider a local variable in e.g. C:
-  \begin{minted}{c}
-  int foo = 4;
-  printf("foo: %d\n", foo);
-  \end{minted}
-  The local variable \mintinline{c}{foo} is available for the remainder of the scope, potentially long after the declaration has ended. This thesis handles both kinds of binding.
-  \item TODO: EBNF, recursion and union types
+  \item Check a value provided by the enclosing pattern or match expression. The result of this check must be usable to change control flow.
+  \item Possibly expose a bound name, where the bound value is derived from the checked value, but only needs to be valid if the check succeeded.
 \end{itemize}
 
-In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs.
+The former implies a function, each pattern might be implemented as a function receiving the value to check and producing a boolean value signifying the result of the check. The latter precludes the use of a function, since a function introduces a new scope, thus preventing any bound name from being available outside its body.
 
-Romeo \cite{Stansifer2014} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$.
+Other pattern match systems implemented as macros (e.g. TODO: ref) tend to have a more complicated match macro, which constructs the final checking code and binding code by examining the actual contents and / or results of the patterns. Syntax constructions on the other hand have no such functionality, child nodes may only be treated atomically, i.e. moved, removed, or duplicated. As such the composing mechanism must be present in the pattern implementation, but it cannot be a function, since it would hide name bindings.
 
-\section{Syntax Solutions} \label{sec:syntax-solutions}
+The implementation in this thesis thus uses functions that do not introduce a new scope, the expression functions introduced in Section~\ref{sec:core-language} and further discussed in Section~\ref{sec:efun-drawbacks}. They are used to model functions at a syntax level, they take syntax and produce syntax.
 
-The syntax definition formalism SDF \cite{Heering1989} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually, allowing non-terminals to be spread across files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
+A pattern then becomes essentially a function taking a function to call if the match fails and a value to match against. Implementation becomes as follows:
 
-A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
+\begin{minted}{text}
+syntax wildcardPat:Pattern = "_" {
+  BExpression` efun fail. efun value. #unit
+}
 
-SDF has also been extended to handle layout-sensitive grammars \cite{Erdweg2013} through extra annotations, thus retaining the declarative nature of a grammar.
+syntax bindPat:Pattern = id:Identifier {
+  #bind id after
+  BExpression` efun fail. efun value. defAfter `id(id) = value
+}
 
-\textcite{Silkensen2013} instead consider the problem of combining already constructed grammars in a scalable way. The main observation they use is that most domain specific languages deal with values of different types. With this in mind the different grammars can use these types, for example using non-terminals such as \mintinline{text}{Matrix} instead of \mintinline{text}{Expression}. Additionally, if identifiers can be specified to have a specific type (e.g. \mintinline{text}{Matrix}) they can be used as islands in island parsing. By using these two things the authors present a parsing algorithm that needs to examine far fewer possible parsings, even in the presence of many DSLs. The precise scalability claim can be found in the paper.
+syntax intLitPat:Pattern = i:Integer {
+  BExpression` efun fail. efun value.
+    #if (#equal value `int(i))
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
 
-\section{Combined Solutions} \label{sec:full-solutions}
+syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
+  #assoc right
+  #prec 10
+  BExpression` efun fail. efun value.
+    (#if (#equal value #nil)
+       (fun _. fail #unit)
+       (fun _. #unit);
+     defAfter headValue = #head value;
+     `t(head) fail headValue;
+     defAfter tailValue = #tail value;
+     `t(tail) fail tailValue)
+}
+\end{minted}
 
-SoundX \cite{Lorenzen2016} is a system for specifying extensible languages. It uses SDF (see section \ref{sec:syntax-solutions}) to specify syntax and adds type rules and type judgements. A language extension is specified as a set of rewritings (macros) and type rules for the rewritings. Macros in SoundX are checked to guarantee that they preserve abstraction on a type level, i.e. they introduce no type errors during rewriting. Similarly, code can be type checked without performing rewriting.
+The pattern implementing matching against a list literal (\mintinline{ocaml}{[a, b]} as opposed to \mintinline{ocaml}{a :: b :: []}) is a straightforward extension of the cons pattern.
 
-The system works through a rewriting of derivation trees, not pure syntax, thus macros have access to not only types explicit in a program but also derived types.
+% TODO: not neutral, not objective
+The inability to express patterns in syntax constructions without the presence of an unsound construction in the core language signals a clear flaw in the method. The syntax descriptions and binding specifications on the other hand are clear and concise and may be considered a success.
 
-Copper \cite{VanWyk2007} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
+\subsection{Lists and Ambiguous Syntax}
+
+A list literal in OCaml is a list of semi-colon separated expressions, enclosed in square brackets. The syntax description of a corresponding syntax construction is straight-forward and can be seen below:
+
+\begin{minted}{text}
+syntax listLit:Expression =
+  "[" (e:Expression (";" es:Expression)*)? "]"
+{
+  <...>
+}
+\end{minted}
+
+However, OCaml additionally supports sequential composition of expressions in the form of an operator, semi-colon. This syntax construction is also straight forward:
+
+\begin{minted}{text}
+syntax seqComp:Expression =
+  e1:Expression ";" e2:Expression
+{
+  #assoc right
+  #prec 2
+  <...>
+}
+\end{minted}
+
+The resulting composed syntax is ambiguous however: a list literal of length greater than one will never be parsed unambiguously, there is nothing to distinguish the item separators from the sequential composition operator. The OCaml parser special cases this, parsing \mintinline{ocaml}{[1;2;3]} as a list of three elements and \mintinline{ocaml}{[(1;2;3)]} as a list of one element.
+
+Syntax constructions can implement this, but not in a convenient fashion. If we introduce a new syntax type, \mintinline{text}{Statement}, as an expression that may be a sequential composition, and use it in most cases where we would otherwise put \mintinline{text}{Expression}:
+
+% TODO: put actual results of making this change in a different language definition for ocaml
+\begin{minted}{text}
+syntax type Statement = Expression
+
+syntax seqComp:Statement =
+  e1:Statement ";" e2:Statement
+{
+  #assoc right
+  #prec 2
+  <...>
+}
+
+syntax normalExpression:Statement = e:Expression {
+  e
+}
+\end{minted}
+
+\section{An Imperative Language} \label{sec:imperative-eval}
+
+The imperative language implemented to test the expressiveness of syntax constructions is a subset of Lua. % TODO: ref lua
+Tables and global variables, arguably the more unique aspects of the language, are not implemented, instead the focus lies on implementing control flow common in imperative languages. The ones implemented here are loops, \mintinline{text}{break} and \mintinline{text}{return}.
 
 \chapter{Results and Discussion}
 
@@ -444,8 +751,14 @@ Copper \cite{VanWyk2007} and Silver \cite{Van-Wyk2010Silver:-An-exte} together f
 
 \printbibliography[heading=bibintoc]
 
-% \appendix
+\appendix
 
-% \chapter{Unnecessary Appended Material}
+\chapter{Language Definition: OCaml Subset} \label{sec:appendix-ocaml}
+
+\inputminted{text}{implementation/languages/ocaml/language}
+
+\chapter{Language Definition: Lua Subset} \label{sec:appendix-lua}
+
+\inputminted{text}{implementation/languages/lua/language}
 
 \end{document}
