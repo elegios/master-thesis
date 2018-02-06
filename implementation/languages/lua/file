@@ -7,6 +7,18 @@ function factorial(n)
   return n * factorial(n - 1)
 end
 
+function fib(n)
+  local a = 0
+  local b = 1
+  local temp
+  for i = 1, n-1 do
+    temp = b
+    b = a + b
+    a = temp
+  end
+  return b
+end
+
 function foo(n)
   print("foo")
   print(n)
@@ -32,3 +44,9 @@ end
 print(factorial(4))
 
 foo(4)
+
+for n = 1,10 do
+  print("fib")
+  print(n)
+  print(fib(n))
+end

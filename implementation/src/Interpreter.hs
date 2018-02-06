@@ -231,6 +231,11 @@ builtin "minus" = arithmetic (-) (-)
 builtin "multiply" = arithmetic (*) (*)
 builtin "divide" = arithmetic div (/)
 builtin "equal" = FuncV $ \a -> return . FuncV $ \b -> boolToValue $ a == b
+builtin "leq" = FuncV $ \a -> return . FuncV $ \b -> boolToValue $ case (a, b) of
+  (IntV a, IntV b) -> a <= b
+  (IntV a, FloatV b) -> fromInteger a <= b
+  (FloatV a, IntV b) -> a <= fromInteger b
+  (FloatV a, FloatV b) -> a <= b
 builtin "true" = TrueV
 builtin "false" = FalseV
 builtin "unit" = UnitV

@@ -79,6 +79,7 @@ syntax minus:Builtin = "minus" { builtin }
 syntax multiply:Builtin = "multiply" { builtin }
 syntax divide:Builtin = "divide" { builtin }
 syntax equal:Builtin = "equal" { builtin }
+syntax leq:Builtin = "leq" { builtin }
 syntax true:Builtin = "true" { builtin }
 syntax false:Builtin = "false" { builtin }
 syntax unit:Builtin = "unit" { builtin }
