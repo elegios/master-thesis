@@ -1,28 +1,37 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, Rank2Types #-}
 
-module Types.ResolvedConstruction (Scope(..), ResolvedConstruction(..)) where
+module Types.ResolvedConstruction
+( Scope(..)
+, ResolvedConstruction(..)
+, expand
+, ExpansionFunction(..)
+) where
 
-import Types.Construction (NoSplice)
 import Types.Ast (FixNode, MidNodeI)
 import Types.Paths (MultiPath, TreeEndPath, TreePath)
 import Types.GenSym (GenSym)
 
 data Scope = FarScope | CloseScope | Scope MultiPath TreeEndPath Scope deriving (Show, Eq, Ord)
 
-type Node = FixNode NoSplice GenSym
-type MidNode = MidNodeI (NoSplice Node) GenSym
+type Node s = FixNode s GenSym
+type MidNode s = MidNodeI (s (Node s)) GenSym
+
+newtype ExpansionFunction = ExpansionFunction { unExpFun :: forall s. Node s -> MidNode s }
 
 data ResolvedConstruction = ResolvedConstruction
   { beforeBindings :: TreeEndPath
   , afterBindings :: TreeEndPath
   , inBindings :: [(TreeEndPath, TreePath)]
   , scopes :: [Scope]
-  , expand :: Maybe (Node -> MidNode) }
+  , _expand :: Maybe ExpansionFunction }
+
+expand :: ResolvedConstruction -> Maybe (Node s -> MidNode s)
+expand ResolvedConstruction{_expand} = unExpFun <$> _expand
 
 instance Show ResolvedConstruction where
   show ResolvedConstruction{..} = "ResolvedConstruction{beforeBindings=" ++ show beforeBindings
                                   ++ ", afterBindings=" ++ show afterBindings
                                   ++ ", inBindings=" ++ show inBindings
                                   ++ ", scopes=" ++ show scopes
-                                  ++ ", expand=" ++ show (const "<func>" <$> expand)
+                                  ++ ", expand=" ++ show (const "<func>" <$> _expand)
                                   ++ "}"
