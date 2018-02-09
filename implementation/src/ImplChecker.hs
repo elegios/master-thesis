@@ -19,7 +19,7 @@ import Types.Result (ResultT(..))
 type Node s = FixNode s GenSym
 type MidNode s = MidNodeI (s (Node s)) GenSym
 
--- TODO: Does not check that the implementation exposes things before and/or after, only checks internal correctness
+-- TODO: no check is done on correct usage of fold1, do that here or in construction resolution?
 
 -- First String is name of syntax construction
            -- FakeNode can bind names exposed through Dependency before expansion, but not after

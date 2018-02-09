@@ -170,7 +170,7 @@ syntax numFor:Statement =
      defAfter end = #deref `t(e);
      #callcc (fun break. #fix (fun rep. fun x.
        (defAfter `id(i) = x;
-        #if (#leq x end)  // TODO: doesn't handle a step that misses the last, nor end < start (which should be nop)
+        #if (#leq x end)
           (fun _. (`t(body) return break;
                    rep (#plus x step)))
           (fun _. #unit)))
