@@ -23,6 +23,7 @@ library
                      , Types.Ast
                      , Ambiguity
                      , ConstructionResolution
+                     , ImplChecker
                      , Binding
                      , Types.ResolvedConstruction
                      , Types.Paths

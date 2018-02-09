@@ -28,6 +28,7 @@ import Types.ResolvedConstruction
 import Types.GenSym (GenSym)
 import Ambiguity
 import ConstructionResolution
+import ImplChecker
 import Binding
 import FullExpander
 import Interpreter
@@ -50,6 +51,8 @@ main = do
   putStrLn "\nResolving Constructions"
   resolvedConstructions <- resolveConstructions constructions
   let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
+  putStrLn "\nChecking Implementations"
+  implCheck constructions allResolvedConstructions
   putStrLn "\nParsing source"
   node <- ambiguityParse constructions startSym source
   putStrLn "\nResolving source"
@@ -120,6 +123,15 @@ getConstructions impl path = withFile path ReadMode $ \f -> do
     _ -> error $ "Got too many parses of grammar file \"" ++ path ++ "\""
   where
     addPrefix c@Construction{name} = c { Types.Construction.name = path ++ "#" ++ name }
+
+implCheck :: M.Map String (Constr _) -> M.Map String ResolvedConstruction -> IO ()
+implCheck constructions resolvedConstructions = if S.null errors
+  then return ()
+  else do
+    forM_ errors $ putStrLn . show
+    error $ "Could continue, but will not"
+  where
+    errors = check constructions resolvedConstructions
 
 fullParse :: IO ()
 fullParse = do

@@ -43,7 +43,7 @@ instance Ord Position where
 
 data Range = Range { start :: !Position, end :: !Position }
            | NoRange
-           deriving Eq
+           deriving (Eq)
 
 instance Show Range where
   show Range{start, end} = show (line start) ++ ":" ++ show (column start) ++ "-" ++ show (line end) ++ ":" ++ show (column end)
@@ -51,6 +51,9 @@ instance Show Range where
 
 instance Ord Range where
   compare (Range s1 e1) (Range s2 e2) = compare s1 s2 `mappend` compare e1 e2
+  compare NoRange NoRange = EQ
+  compare NoRange Range{} = LT
+  compare Range{} NoRange = GT
 
 instance Monoid Range where
   mempty = NoRange
