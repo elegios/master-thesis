@@ -1,4 +1,5 @@
 syntax top:File = body:Block {
+  #scope (body)
   BExpression` #callcc (fun return.
     `t(body) return (fun _. #crash))
 }
@@ -21,6 +22,8 @@ syntax funcCall:Expression =
   f:Expression "(" args:ArgList ")"
 {
   #prec 15
+  #scope (args)
+  #scope (f)
   BExpression` `t(args) `t(f) #unit
 }
 
@@ -76,6 +79,8 @@ syntax parens:Expression = "(" e:Expression ")" {
 syntax funcCallStmnt:Statement =
   f:Expression "(" args:ArgList ")"
 {
+  #scope (f)
+  #scope (args)
   BExpression` efun _. efun _. `t(args) `t(f) #unit
 }
 
@@ -90,6 +95,7 @@ syntax local:Statement =
   "local" x:Identifier ("=" e:Expression)?
 {
   #bind x after
+  #scope (e)
   BExpression` efun _. efun _.
     defAfter `id(x) = #ref
       (#deref `t(foldr e _ (e) (BExpression` #unit)))
@@ -105,6 +111,10 @@ syntax if:Statement =
   elseif:("elseif" econd:Expression "then" ethen:Block)*
   ("else" else:Block)? "end"
 {
+  #scope (cond (then))
+  #scope elseif:(econd (ethen))
+  #scope (else)
+
   BExpression` efun return. efun break. #if (#deref `t(cond))
     (fun _. `t(then) return break)
     (fun _. `t(
@@ -121,6 +131,7 @@ syntax while:Statement =
   "while" cond:Expression "do"
   body:Block "end"
 {
+  #scope (cond (body))
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _.
       #if (#deref `t(cond))
@@ -133,6 +144,7 @@ syntax while:Statement =
 syntax repeat:Statement =
   "repeat" body:Block "until" cond:Expression
 {
+  #scope ((body) cond)
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _. (
       `t(body) return break;
@@ -148,6 +160,10 @@ syntax numFor:Statement =
   "do" body:Block "end"
 {
   #bind i in body
+  #scope (s)
+  #scope (e)
+  #scope (step)
+  #scope (body)
   BExpression` efun return. efun _.
     (defAfter step = #deref
       `t(foldr step _ (step) (BExpression` 1));
@@ -169,6 +185,7 @@ syntax function:Statement =
   #bind f before
   #bind f after
   #bind f, a, as in body
+  #scope (body)
   BExpression` efun _. efun _.
     (defAround `id(f) = #fix (fun recur.
       (defAfter `id(f) = recur;

@@ -3,12 +3,14 @@ syntax top:File = ts:Top+ {
   foldl1 ts prev (BExpression` `t(prev); `t(ts))
 }
 
+// TODO: if args[1] has #bind before and args[0] uses it then args[0] will work before expansion, but not after
+//       same for letExpr
 syntax topLet:Top =
   "let" x:Identifier args:Pattern*
   "=" e:Expression (";" ";")?
 {
   #bind x after
-  #scope (args e)
+  #scope (args (e))
   BExpression` defAfter `id(x) = `t(
     foldr args next
       (BExpression` fun x.
@@ -34,7 +36,7 @@ syntax letExpr:Expression =
   #prec 2
   #bind x in body
   #scope (body)
-  #scope (args e)
+  #scope (args (e))
   BExpression` defAfter `id(x) = `t(
     foldr args next
       (BExpression` fun x.
@@ -161,8 +163,8 @@ syntax listPat:Pattern =
 syntax consPat:Pattern = h:Pattern ":" ":" t:Pattern {
   #assoc right
   #prec 10
-  BExpression` efun fail. efun val.
-    (#if (#equal val #nil)
+  BExpression` efun fail. efun value.
+    (#if (#equal value #nil)
        (fun _. fail #unit)
        (fun _. #unit);
      defAfter headValue = #head value;
