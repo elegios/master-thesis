@@ -12,6 +12,7 @@ import Control.Arrow ((&&&), second)
 import Control.Monad.Fix (mfix)
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import Text.Earley hiding (token)
 
@@ -19,11 +20,18 @@ import Types.Lexer (sameContent, Token(..), Ranged(..), Range)
 import Types.Construction
 import Types.Ast
 
+import Data.Generics.Uniplate.Data (universe)
+
 type Production r a = Prod r String Token a
 
 type Node s = NodeI s String
 type MidNode s = MidNodeI s String
 type SplicedNode = FixNode Splice String
+
+findKeywords :: Foldable f => f (Construction n) -> S.Set String
+findKeywords = foldMap kws
+  where
+    kws Construction{syntax} = S.fromList [s | TokenPat (IdentifierTok _ s) <- syntax >>= universe]
 
 parseWithGrammar :: String -> M.Map String (Construction n) -> [Token] -> ([FixNode NoSplice String], Report String [Token])
 parseWithGrammar startTy constructions = fullParses $ parser $ do
@@ -31,7 +39,7 @@ parseWithGrammar startTy constructions = fullParses $ parser $ do
     M.elems constructions
       & fmap (syntaxType &&& (:[]))
       & M.fromListWith mappend
-      & M.traverseWithKey (generateType empty nonTerminals)
+      & M.traverseWithKey (generateType empty (findKeywords constructions) nonTerminals)
   return $ FixNode <$> syntax M.! startTy
 
 implementationGrammar :: M.Map String (Construction n) -> Production r (Splice SplicedNode) -> Grammar r (Production r SplicedNode)
@@ -40,7 +48,7 @@ implementationGrammar constructions splice = do
     M.elems constructions
       & fmap (syntaxType &&& (:[]))
       & M.fromListWith mappend
-      & M.traverseWithKey (generateType splice nonTerminals)
+      & M.traverseWithKey (generateType splice (findKeywords constructions) nonTerminals)
   rule . fmap FixNode . asum $ toImpl <$> M.toList syntax
   where
     toImpl (syntaxType, prod) =
@@ -49,8 +57,8 @@ implementationGrammar constructions splice = do
       prod
 
 -- TODO: cleanup, potentially in relation to AccNamed
-generateType :: forall r s n. Production r s -> M.Map String (Production r (Node s)) -> String -> [Construction n] -> Grammar r (Production r (Node s))
-generateType splice nonTerminals currentTy constructions =
+generateType :: forall r s n. Production r s -> S.Set String -> M.Map String (Production r (Node s)) -> String -> [Construction n] -> Grammar r (Production r (Node s))
+generateType splice keywords nonTerminals currentTy constructions =
   constructions
     & sortBy (compare `on` fmap (* (-1)) . precData . extraData)
     & groupBy ((==) `on` precData . extraData)
@@ -80,7 +88,7 @@ generateType splice nonTerminals currentTy constructions =
           Just AssocRight -> mapAccumR
           _ -> mapAccumL
         toProd = \case
-          IdentifierPat -> accname $ uncurry MidIdentifier <$> identifier <|> typedSplice MidSplice "id"
+          IdentifierPat -> accname $ uncurry MidIdentifier <$> identifier keywords <|> typedSplice MidSplice "id"
           IntegerPat -> accname $ integer <|> typedSplice MidSplice "int"
           FloatPat -> accname $ float <|> typedSplice MidSplice "float"
           StringPat -> accname $ string <|> typedSplice MidSplice "str"
@@ -131,8 +139,12 @@ float :: Production r (MidNode s)
 float = Basic <$> satisfy (\case { FloatTok{} -> True; _ -> False }) <?> "float"
 string :: Production r (MidNode s)
 string = Basic <$> satisfy (\case { StringTok{} -> True; _ -> False }) <?> "string"
-identifier :: Production r (Range, String)
-identifier = terminal (\case { (IdentifierTok r s) -> Just (r, s); _ -> Nothing }) <?> "identifier"
+identifier :: S.Set String -> Production r (Range, String)
+identifier keywords = terminal check <?> "identifier"
+  where
+    check (IdentifierTok r s)
+      | s `S.notMember` keywords = Just (r, s)
+    check _ = Nothing
 token :: Token -> Production r (MidNode s)
 token tok = Basic <$> satisfy (sameContent tok) <?> show tok
 

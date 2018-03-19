@@ -3,6 +3,7 @@
 module Types.Construction where
 
 import Control.Applicative ((<|>))
+import Data.Data (Data, Typeable)
 
 import Types.Lexer (Token)
 
@@ -24,9 +25,9 @@ data SyntaxPattern = IdentifierPat
                    | RepeatPat SyntaxPattern Repeat
                    | SequencePat [SyntaxPattern]
                    | NamedPat String SyntaxPattern
-                   deriving (Show, Eq)
+                   deriving (Show, Eq, Data, Typeable)
 
-data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq)
+data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq, Data, Typeable)
 
 data ExtraData = ExtraData
   { assocData :: Maybe AssocData

@@ -1,5 +1,7 @@
 module Types.Lexer where
 
+import Data.Data (Data, Typeable)
+
 {- Tokens -}
 
 data Token = IdentifierTok Range String
@@ -7,7 +9,7 @@ data Token = IdentifierTok Range String
            | FloatTok Range Double
            | SymbolTok Range String
            | StringTok Range String
-           deriving (Eq, Ord)
+           deriving (Eq, Ord, Data, Typeable)
 
 sameContent :: Token -> Token -> Bool
 sameContent (IdentifierTok _ t1) (IdentifierTok _ t2) = t1 == t2
@@ -36,14 +38,14 @@ instance Ranged Token where
 data Position = Pos { absolute :: !Int
                     , line :: !Int
                     , column :: !Int }
-                    deriving (Eq, Show)
+                    deriving (Eq, Show, Data, Typeable)
 
 instance Ord Position where
   compare (Pos a _ _) (Pos b _ _) = compare a b
 
 data Range = Range { start :: !Position, end :: !Position }
            | NoRange
-           deriving (Eq)
+           deriving (Eq, Data, Typeable)
 
 instance Show Range where
   show Range{start, end} = show (line start) ++ ":" ++ show (column start) ++ "-" ++ show (line end) ++ ":" ++ show (column end)
