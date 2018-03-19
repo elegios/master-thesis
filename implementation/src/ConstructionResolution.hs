@@ -174,7 +174,7 @@ recurS accNames instPath h@Helpers{..} = \case
       Just i -> pure . reader $ (!! i) . accs
       Nothing -> do
         mp <- findPath name
-        if mp `childOf` instPath
+        if mp `isSpecializedBy` instPath
           then pure $ followSPN <$> reader node <*> (catMaybes <$> specialize (fromMultiPath mp))
           else Error . pure $ SingleNameExpected constrName name
     followSPN (FixNode Node{children}) (i:p) = followSPM p $ children !! i

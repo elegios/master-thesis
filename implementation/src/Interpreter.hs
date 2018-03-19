@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, FlexibleContexts #-}
+{-# LANGUAGE ViewPatterns, FlexibleContexts, BangPatterns #-}
 
 -- TODO: better error reporting, source location should be easy to add, even though maybe it'll only give the location in the "language" file
 
@@ -45,7 +45,7 @@ data Value sym r = IntV Integer
 instance Show sym => Show (Value sym r) where
   show (IntV i) = show i
   show (FloatV f) = show f
-  show (StringV s) = show s
+  show (StringV s) = s
   show FuncV{} = "<func>"
   show (RefV ref) = "ref(" ++ show (unsafePerformIO $ readIORef ref) ++ ")"
   show NilV = "nil"
@@ -110,8 +110,11 @@ traceMark n m = do
   liftIO $ putStrLn $ "=> " ++ show res
   return res
 
+seqIdM :: Monad m => m a -> m a
+seqIdM m = m >>= \ !a -> return a
+
 eval :: (Ord sym, Show sym) => NodeView sym -> Interpreter sym r (Value sym r)
-eval n = case n of
+eval n = seqIdM $ case n of
   N "top" [n] -> evalWithArounds n
 
   N "defAfter" [_, Id i, _, e] ->
@@ -236,6 +239,10 @@ builtin "leq" = FuncV $ \a -> return . FuncV $ \b -> boolToValue $ case (a, b) o
   (IntV a, FloatV b) -> fromInteger a <= b
   (FloatV a, IntV b) -> a <= fromInteger b
   (FloatV a, FloatV b) -> a <= b
+  _ -> error $ "leq was applied to " ++ show a ++ " and " ++ show b
+builtin "and" = FuncV $ \a -> return . FuncV $ \b -> case (a, b) of
+  (TrueV, TrueV) -> boolToValue True
+  _ -> boolToValue False
 builtin "true" = TrueV
 builtin "false" = FalseV
 builtin "unit" = UnitV

@@ -18,13 +18,14 @@ module Types.Paths
 , childOf
 , childrenOverlapping
 , childrenDisjoint
+, isSpecializedBy
 , mergeToTreeEnd
 , mergePaths
 ) where
 
 import Data.Function ((&))
 import Data.List (foldl')
-import Data.Maybe (isNothing, catMaybes, maybeToList, fromMaybe, fromJust)
+import Data.Maybe (isJust, isNothing, catMaybes, maybeToList, fromMaybe, fromJust)
 
 import Control.Arrow (second)
 
@@ -97,6 +98,14 @@ toTreeEnd tp = if isTreeEnd tp then Just $ TreeEndPath tp else Nothing
   where
     isTreeEnd (TreePath m end) = (end && M.null m)
                               || (not end && all isTreeEnd m)
+
+isSpecializedBy :: MultiPath -> MultiPath -> Bool
+isSpecializedBy (fromMultiPath -> p) (fromMultiPath -> p') =
+  together p p'
+  where
+    together (a:as) (b:bs)
+      | a == b = together as bs
+    together as _ = all isJust as
 
 oneOf :: (Path p, Path p') => p -> p' -> Bool
 oneOf (view -> TreePath m b) (view -> TreePath m' b') =

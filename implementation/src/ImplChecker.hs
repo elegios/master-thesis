@@ -41,7 +41,7 @@ data FakeNode = FakeNode FakeKind [Int] deriving (Eq, Ord)
 data FakeKind = SyntaxKind | OtherKind deriving (Eq, Ord)
 
 instance Show FakeNode where
-  show (FakeNode kind path) = show kind ++ "#" ++ show path
+  show (FakeNode kind path) = show kind ++ "#" ++ show (reverse path)
 instance Show FakeKind where
   show SyntaxKind = "syntax"
   show OtherKind = "other"

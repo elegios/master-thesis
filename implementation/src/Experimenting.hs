@@ -39,9 +39,25 @@ type Production r a = Prod r String Token a
 noImpl :: Production r b -> Grammar r (Production r a)
 noImpl _ = return empty
 
+isOption :: String -> Bool
+isOption "-" = False
+isOption ('-' : _) = True
+isOption _ = False
+
+hasOption :: String -> IO Bool
+hasOption opt = any (\a -> a == opt || a == shortOpt) <$> getArgs
+  where
+    shortOpt = "-" ++ formatShortOpt opt
+    formatShortOpt "" = ""
+    formatShortOpt ('-' : cs@('-':_)) = formatShortOpt cs
+    formatShortOpt ('-' : c : cs) = c : formatShortOpt cs
+    formatShortOpt (_ : cs) = formatShortOpt cs
+
 main :: IO ()
 main = do
-  [startSym, coreGrammar, grammar, source] <- getArgs
+
+  [startSym, coreGrammar, grammar, source] <- filter (not . isOption) <$> getArgs
+  ignoreExpansionCheckingFailure <- hasOption "--ignore-expansion-check"
   putStrLn "\nParsing coreGrammar"
   coreConstructions <- getConstructions noImpl coreGrammar
   putStrLn "\nResolving core Constructions"
@@ -52,7 +68,7 @@ main = do
   resolvedConstructions <- resolveConstructions constructions
   let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
   putStrLn "\nChecking Implementations"
-  implCheck constructions allResolvedConstructions
+  implCheck ignoreExpansionCheckingFailure constructions allResolvedConstructions
   putStrLn "\nParsing source"
   node <- ambiguityParse constructions startSym source
   putStrLn "\nResolving source"
@@ -97,6 +113,7 @@ ambiguityParse constructions startSym source = do
       error "Cannot continue"
   where
     parser = parseWithGrammar startSym constructions
+    parseFile parser "-" = getContents >>= evaluate . parser . tokenize . force
     parseFile parser source = withFile source ReadMode $ \f ->
       hGetContents f >>= evaluate . parser . tokenize . force
 
@@ -124,12 +141,14 @@ getConstructions impl path = withFile path ReadMode $ \f -> do
   where
     addPrefix c@Construction{name} = c { Types.Construction.name = path ++ "#" ++ name }
 
-implCheck :: M.Map String (Constr _) -> M.Map String ResolvedConstruction -> IO ()
-implCheck constructions resolvedConstructions = if S.null errors
+implCheck :: Bool -> M.Map String (Constr _) -> M.Map String ResolvedConstruction -> IO ()
+implCheck ignoreFailure constructions resolvedConstructions = if S.null errors
   then return ()
   else do
     forM_ errors $ putStrLn . show
-    error $ "Could continue, but will not"
+    if ignoreFailure
+      then putStrLn $ "WARNING: continuing despite expansion check failure"
+      else error $ "Could continue, but will not (use -iec or --ignore-expansion-check)"
   where
     errors = check constructions resolvedConstructions
 
