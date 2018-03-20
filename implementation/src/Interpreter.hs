@@ -141,6 +141,7 @@ eval n = seqIdM $ case n of
 
   n -> error $ "Malformed / unsupported program node: " ++ show n
 
+-- TODO: BUG: fizzbuzz with let rec and (foo and bar) gives "Identifier bar#141 is not defined", even though the expanded core suggests that it should be defined
 evalWithArounds :: (Show sym, Ord sym) => NodeView sym -> Interpreter sym r (Value sym r)
 evalWithArounds n = do
   bound <- M.keysSet <$> (ask >>= liftIO . readIORef)

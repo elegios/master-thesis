@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, ViewPatterns #-}
 
 module ImplChecker (check, Error(..)) where
 
@@ -7,6 +7,8 @@ import Control.Arrow ((&&&), (***))
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Functor.Identity (runIdentity)
+import Data.Semigroup (Semigroup, (<>))
 
 import qualified Binding
 
@@ -50,15 +52,15 @@ doCheck :: M.Map String (ResolvedConstruction) -> String -> (Node FakeNodeS -> M
 doCheck resConstrs constrName _expand pats = S.unions $ inner <$> pairs
   where
     inner (start, expansion) =
-      let (startErrs, (startDeps, startExports)) = computeDependencies resConstrs start
+      let (startErrs, (fmap runIdentity -> startDeps, startExports)) = computeDependencies resConstrs start
           (expansionErrs, (expansionDeps, expansionExports)) = computeDependencies resConstrs expansion
           bindingErrors = S.mapMonotonic (BindingError constrName) $ expansionErrs `S.difference` startErrs
           dependencyErrors = S.unions . M.elems $ depErrIntersect startDeps expansionDeps
           exportErrors = S.mapMonotonic (ExportExpectedError constrName) $ startExports `S.difference` expansionExports
       in S.unions [bindingErrors, dependencyErrors, exportErrors]
-    depErrIntersect = M.intersectionWithKey $ \n req sat ->
-      let unsatisfied = S.mapMonotonic (DependencyError constrName n) $ req `S.difference` sat
-          selfDependent = if any (\case {SyntaxDependency n' _ -> n == n'; _ -> False}) sat
+    depErrIntersect = M.intersectionWithKey $ \n req (sat :: [S.Set Dependency]) ->
+      let unsatisfied = S.mapMonotonic (DependencyError constrName n) . S.unions $ S.difference req <$> sat
+          selfDependent = if any (\case {SyntaxDependency n' _ -> n == n'; _ -> False}) `any` sat
             then S.singleton $ SelfDependentError constrName n
             else S.empty
       in unsatisfied `S.union` selfDependent
@@ -106,15 +108,26 @@ data Export = SyntaxExport Direction FakeNode
             | IdentifierExport Direction GenSym
             deriving (Show, Eq, Ord)
 
-computeDependencies :: M.Map String ResolvedConstruction -> Node FakeNodeS -> (S.Set Binding.Error, (M.Map FakeNode (S.Set Dependency), S.Set Export))
+newtype MonoidMap k v = MonoidMap { unMonoidMap :: M.Map k v }
+
+instance (Ord k, Semigroup v) => Semigroup (MonoidMap k v) where
+  MonoidMap a <> MonoidMap b = MonoidMap $ M.unionWith (<>) a b
+instance (Ord k, Semigroup v) => Monoid (MonoidMap k v) where
+  mempty = MonoidMap M.empty
+  mappend = (<>)
+
+computeDependencies :: (Applicative f, Semigroup (f (S.Set Dependency)), Monoid (f (S.Set Dependency)))
+                    => M.Map String ResolvedConstruction
+                    -> Node FakeNodeS
+                    -> (S.Set Binding.Error, (M.Map FakeNode (f (S.Set Dependency)), S.Set Export))
 computeDependencies _ (FixNode (SyntaxSplice (FakeNodeS s))) =
-  (S.empty, (M.singleton s S.empty, S.fromList [SyntaxExport Before s, SyntaxExport After s]))
+  (S.empty, (M.singleton s mempty, S.fromList [SyntaxExport Before s, SyntaxExport After s]))
 computeDependencies resConstrs n =
   toErrors *** toExports $ Binding.resolveNamesS resSplice resConstrs n
   where
     toErrors (Data _) = S.empty
     toErrors (Error es) = S.fromList es
-    toExports Binding.SpliceBindings{..} = (result, before `S.union` after)
+    toExports Binding.SpliceBindings{..} = (unMonoidMap result, before `S.union` after)
       where
         before = S.mapMonotonic (IdentifierExport Before) beforeBinding `S.union` S.map depToExport beforeSplice
         after = S.mapMonotonic (IdentifierExport After) afterBinding `S.union` S.map depToExport afterSplice
@@ -127,4 +140,4 @@ computeDependencies resConstrs n =
           FakeNode SyntaxKind _ -> (toDep Before, toDep After)
           _ -> (S.empty, S.empty)
         toDep = S.singleton . SyntaxDependency n
-        result = M.singleton n $ S.unions [beforeSplice, afterSplice, S.mapMonotonic IdentifierDependency symbols]
+        result = MonoidMap . M.singleton n . pure $ S.unions [beforeSplice, afterSplice, S.mapMonotonic IdentifierDependency symbols]

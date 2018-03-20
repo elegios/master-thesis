@@ -54,6 +54,7 @@ library
                      , FlexibleInstances
                      , GeneralizedNewtypeDeriving
                      , DeriveDataTypeable
+                     , ScopedTypeVariables
   ghc-options:
     -fwarn-tabs
     -fwarn-unused-imports

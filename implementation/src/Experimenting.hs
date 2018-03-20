@@ -91,6 +91,7 @@ resolveSource :: Gen pre => M.Map String ResolvedConstruction -> FixNode NoSplic
 resolveSource resolvedConstructions node = case resolveNames resolvedConstructions node of
   Data res -> return res
   Error es -> do
+    putStrLn . prettyShow $ node
     putStrLn "Binding errors:"
     mapM_ (putStrLn . show) es
     error $ "Cannot continue"

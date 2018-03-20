@@ -24,7 +24,7 @@ fullExpansion constructions = recur
       Nothing -> prev
       Just (MidNode expanded) -> case resolveNames constructions $ FixNode expanded of
         Data resolved -> recur resolved
-        Error es -> error $ "Name resolution error(s) during expansion: " ++ show es ++ "\ntree:\n" ++ prettyShow (FixNode expanded)
+        Error es -> error $ "Name resolution error(s) during expansion, tree: " ++ prettyShow (FixNode expanded) ++ "\nerrors:\n" ++ show es
       Just m -> error $ "Compiler error: Somehow expanded to a midnode: " ++ show m
     expander name n = (M.lookup name constructions <|> err name >>= expand) <*> pure n
     err name = error $ "Compiler error: Unknown construction: " ++ show name ++ ", constructions keys: " ++ show (M.keys constructions)
