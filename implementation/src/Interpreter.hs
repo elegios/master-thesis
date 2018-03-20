@@ -16,7 +16,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Arrow (first)
 import Data.IORef (IORef, newIORef, writeIORef, readIORef, modifyIORef')
 import Data.List (partition)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (fromMaybe)
 
 import Text.PrettyPrint ((<+>), (<>), ($+$))
 import qualified Text.PrettyPrint as P
@@ -70,7 +70,7 @@ instance Show sym => Eq (Value sym r) where
 type Node sym = NodeI (NoSplice (FixNode NoSplice sym)) sym
 
 interpret :: (Ord sym, Show sym) => FixNode NoSplice sym -> IO String
-interpret = fmap show . runInterpreter . eval . view . evalEFuns M.empty . unSplice
+interpret = fmap show . runInterpreter . evalWithArounds . view . evalEFuns M.empty . unSplice
 
 removeEFuns :: (Ord sym, Show sym) => FixNode NoSplice sym -> FixNode NoSplice sym
 removeEFuns (FixNode n) = FixNode $ evalEFuns M.empty n
@@ -141,17 +141,13 @@ eval n = seqIdM $ case n of
 
   n -> error $ "Malformed / unsupported program node: " ++ show n
 
--- TODO: BUG: fizzbuzz with let rec and (foo and bar) gives "Identifier bar#141 is not defined", even though the expanded core suggests that it should be defined
 evalWithArounds :: (Show sym, Ord sym) => NodeView sym -> Interpreter sym r (Value sym r)
 evalWithArounds n = do
   bound <- M.keysSet <$> (ask >>= liftIO . readIORef)
-  let defArounds = defAround <$> getUnscopedNodes n
-  evalDefArounds $ removeBound bound <$> catMaybes defArounds
+  let defArounds = [(dependencies e, (i, evalWithArounds e)) | N "defAround" [_, Id i, _, e] <- getUnscopedNodes n]
+  evalDefArounds $ removeBound bound <$> defArounds
   eval n
   where
-    defAround (N "defAround" [_, Id i, _, e]) =
-      Just (dependencies e, (i, evalWithArounds e))
-    defAround _ = Nothing
     evalDefArounds [] = return ()
     evalDefArounds defArounds = case partition (S.null . fst) defArounds of
       ([], notReady) -> error $ "Could not evaluate defArounds in a scope, these remain: " ++ show (fst . snd <$> notReady)
@@ -200,6 +196,7 @@ dependencies = recur zero
 
 getUnscopedNodes :: Show sym => NodeView sym -> [NodeView sym]
 getUnscopedNodes n = (n :) $ case n of
+  N "top" _ -> []
   N "defAfter" _ -> []
   N "defAround" _ -> []
   N "seqComp" [e1, _, e2] -> getUnscopedNodes e1 ++ getUnscopedNodes e2
@@ -262,7 +259,7 @@ builtin "if" = FuncV $ \case
   where
     run (FuncV f) = f UnitV
     run value = error $ "Called if with non function then or else: " ++ show value
-builtin "crash" = error $ "Evaluated #crash"  -- TODO: the interpreter might not be strict enough to actually evaluate this?
+builtin "crash" = error $ "Evaluated #crash"
 builtin "print" = FuncV $ liftIO . (UnitV <$) . putStrLn . show
 builtin name = error $ "Unknown builtin: " ++ show name
 
