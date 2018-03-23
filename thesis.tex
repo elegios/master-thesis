@@ -46,24 +46,31 @@ Kommer så småningom
 % Mainmatter is where the actual contents of the thesis goes
 \mainmatter
 
-% TODO: figure out and / or define in thesis consistent terms for a bunch of things:
-% - instance of a syntax construction
-% - syntax construction
-% - syntax type
-% - sub-node in syntax construction, i.e. all things that are declared like a:Expression in the syntax part
-% - possibly a sub-node in an instance of a syntax construction?
-% - underlying language
-% - core language
-% - non-core languages, i.e. languages built on top of some other language
-% - the various parts of a syntax construction declaration:
-%   - name and type
-%   - syntactic description
-%   - implementation (maybe expansion specification / description / something)
-%   - extra info, e.g. #scope, #bind, #prec, etc.
-% - a consistent use of symbol, identifier, and the like
+% TODO: we now support "keywords", which changes a bunch of things that have already been written, which must be checked
 
-% TODO: probably use different syntax for folds in the thesis, while mentioning that the implementation uses a different syntax for ease of implementation?
-% TODO: should i write implementations as though `t, `id and the like are not required, merely mention that an annotation is required in the current implementation?
+\chapter{Glossary}
+% TODO: figure out and / or define in thesis consistent terms for a bunch of things:
+\begin{itemize}
+  \item instance of a syntax construction
+  \item syntax construction
+  \item syntax type
+  \item sub-node in syntax construction, i.e. all things that are declared like a:Expression in the syntax part
+  \item possibly a sub-node in an instance of a syntax construction?
+  \item underlying language
+  \item core language
+  \item non-core languages, i.e. languages built on top of some other language
+  \item the various parts of a syntax construction declaration:
+  \begin{itemize}
+    \item name and type
+    \item syntactic description
+    \item implementation (maybe expansion specification / description / something)
+    \item extra info, e.g. \#scope, \#bind, \#prec, etc.
+  \end{itemize}
+  \item a consistent use of symbol, identifier, and the like
+  \begin{itemize}
+    \item symbol is currently overloaded to mean the textual contents of an identifier and something like '+', '(' or '!'.
+  \end{itemize}
+\end{itemize}
 
 
 \chapter{Introduction} \label{sec:introduction}
@@ -105,7 +112,7 @@ The following expression will exhibit accidental name capture when macro expansi
 
 Notable here is that the above would not produce an error of any kind, the result would simply be silently wrong.
 
-Most macro systems will avoid this problem through various forms of rewriting or more complicated forms of name resolution (e.g. \cite{Flatt:2016:BSS:2837614.2837620} TODO: references), a notable exception being the C preprocessor that makes no such attempt.
+Most macro systems will avoid this problem through various forms of rewriting or more complicated forms of name resolution (e.g. \cite{Flatt2016Binding-As-Sets} TODO: references), a notable exception being the C preprocessor that makes no such attempt.
 
 \subsection{Errors after Expansion}
 
@@ -137,22 +144,47 @@ One advantage of macros is their ability to essentially introduce syntactic suga
 
 Such restrictions simplify parsing the language, since it ensures the grammar is fixed and cannot be changed during parsing.
 
-\section{Research Question}
+\section{Research Question} \label{sec:research-question}
 
-A few attempts at a research question.
+This thesis explores programming language construction through the creation and composition of individual features that are self contained in terms of syntax and semantics. In particular, it should be possible to extend a language by cherrypicking one or a few features from another language without changing them.
 
-\begin{itemize}
-\item Can programming languages be designed in a composable way, where the unit of composition is individual features, and syntax and semantics for each feature is specified together?
+Features here refers to things such as an if-statement, an anonymous function, or a pattern used in pattern matching.
 
-\item Can languages be defined modularly on the level of individual constructions, both syntactically and semantically, while preserving abstraction and allowing composition?
-\end{itemize}
+The goal above states very little in regards to the form of a solution, nor does it provide much assistance in evaluating the usefulness of a situation. To alleviate this issue the following additional design goals will guide the design and evaluation of the approach.
+
+\begin{description}
+  \item[Tower of languages:] It should be possible to define new languages in terms of other languages, very much akin to Lisp tradition.
+  \item[Syntactical freedom:] Language features should be able to specify new syntax, ideally with no constraints.
+  \item[Abstraction preservation:] No usage of a language feature should expose its implementation to an end user.
+  \item[Good error messages:] Improper use or implementation of language features should present the user with understandable error messages.
+  \item[Composition through cherrypicking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
+  \item[Reasoning without context:] Expanding upon the previous point, a language feature should be as self contained as possible to permit reasoning about it without full awareness of its context.
+\end{description}
+
+These goals are referred to throughout the thesis to motivate choices or highlight strengths and flaws with the chosen approach.
+
+\subsection{Delimitations} \label{sec:delimitations}
+
+\begin{description}
+  \item[Type safety] Type safety is not considered. Incorrect usage of features that would give rise to type errors is not detected and will most likely present errors in terms of the implementation of the features being (mis)used. This affects abstraction preservation and good error messages.
+
+  \item[Lexing] This thesis assumes that parsing is done on a token stream, i.e. the syntactical freedom of a feature is limited by a predefined tokenization. This affects syntactical freedom. In practice it mostly means that the syntax of the following things cannot be customized:
+  \begin{itemize}
+    \item Valid identifiers
+    \item Literals, e.g. integers and strings
+    \item Comments
+    % \item Symbols, the lexer assumes that certain characters will never be part of multi-character symbols, e.g. \mintinline{text}{"<;>"} will be tokenized as three symbols since \mintinline{text}{";"} is assumed to always be alone. % TODO: is this really important to mention here? it seems too specific
+  \end{itemize}
+
+  \item[Indentation] This thesis assumes syntax to be whitespace independent, which precludes defining languages such as Python where indentation is important. This affects syntactical freedom.
+\end{description}
 
 \section{Contributions}
 
 This thesis contributes the following:
 
 \begin{itemize}
-  \item A method of specifying the syntax, binding semantics and implementation of a language construction (macro) in a singular location (sections \ref{sec:design-syntax}, \ref{sec:design-bindings} and \ref{sec:design-implementation}).
+  \item A method of specifying the syntax, binding semantics and expansion of a language construction (macro) in a singular location (sections \ref{sec:design-syntax}, \ref{sec:design-bindings} and \ref{sec:design-implementation}).
   \item Proof that macro expansion using the above method terminates, given a finite input (section \ref{sec:proof-termination}).
   \item Proof that macro expansion does not introduce any binding errors (alternatively preservation of $\alpha$-equivalence) (section \ref{sec:proof-no-errors}).
   \item An implementation of a non-trivial subset of JavaScript/Lua (section \ref{sec:imperative-eval}) to evaluate the method's suitability in modeling a typical imperative language.
@@ -204,30 +236,18 @@ SoundX \cite{Lorenzen2016Sound-type-depe} is a system for specifying extensible 
 
 The system works through a rewriting of derivation trees, not pure syntax, thus macros have access to not only types explicit in a program but also derived types.
 
-Copper \cite{Van-Wyk2007Context-aware-s} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination mananges to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
+Copper \cite{Van-Wyk2007Context-aware-s} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
 
-\chapter{Syntax Constructions} \label{sec:syntax-constructions}
+% TODO: The sentiment is correct here, but the exact title feels a bit weird linguistically
+\chapter{Design of Syntax Constructions} \label{sec:syntax-constructions}
 
-This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and capabilities. Section~\ref{sec:design-goals} will reiterate and clarify the goals of the design to guide the later sections (\ref{sec:constructions-and-types} through \ref{sec:design-implementation}), which will build the constructions one piece at a time.
-
-\section{Design Goals} \label{sec:design-goals}
-
-The goals that guide the design of syntax constructions can be found below. Note that not all of these are fully met.
-
-\begin{description}
-  \item[Tower of languages:] It should be possible to define new languages in terms of other languages, very much akin to Lisp tradition.
-  \item[Syntactical freedom:] Syntax constructions should be able to specify new syntax, ideally with no constraints.
-  \item[Abstraction preservation:] No usage of a syntax construction should expose its implementation to an end user.
-  \item[Good error messages:] Improper use or implementation of syntax constructions should present the user with understandable error messages.
-  \item[Composition through cherrypicking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
-  \item[Reasoning without context:] Expanding upon the previous point, a syntax construction should be as self contained as possible to permit reasoning about it without full awareness of its context.
-\end{description}
+This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and capabilities. Section~\ref{sec:research-question} states the design goals that guide the design in this chapter. Sections \ref{sec:design-syntax} through \ref{sec:design-implementation} use these goals to build syntax constructions, one piece at a time.
 
 \section{Constructions and Types} \label{sec:constructions-and-types}
 
-Syntax constructions center around two concepts, the constructions themselves and their types. A syntax construction is essentially a macro with some additional features and guarantees, while a syntax type is something along the lines of \mintinline{haskell}{Expression}, \mintinline{haskell}{Statement} or \mintinline{haskell}{Pattern}.
+Syntax constructions center around two concepts, the constructions themselves and their types. A syntax construction is essentially a macro with some additional features and guarantees, while a syntax type is something along the lines of \mintinline{haskell}{Expression}, \mintinline{haskell}{Statement} or \mintinline{haskell}{Pattern}. These types should facilitate statements like: ''a sum is an expression and consists of an expression, a plus, and another expression''.
 
-A singular syntax construction forms the unit of composition; they can be included or excluded in a language on an individual basis.
+A singular syntax construction forms the unit of composition; they can be included or excluded in a language on an individual basis. A language is thus a set of syntax constructions.
 
 \section{Syntax} \label{sec:design-syntax}
 
@@ -254,23 +274,46 @@ syntax parens:Expression = "(" e:Expression ")" {
     <...>
 }
 
-syntax intLit:Expression = i:Integer {
+syntax integerLiteral:Expression = i:Integer {
     <...>
 }
 
-syntax vecLit:Expression =
+syntax vectorLiteral:Expression =
   "[" e:Expression ("," es:Expression)* "]" {
     <...>
 }
 \end{minted}
 
-Note that the implementation of each syntax construction is omitted and will instead be discussed in section~\ref{sec:design-implementation}.
+A syntax construction is defined by the following things:
+\begin{itemize}
+  \item Its name (e.g. \mintinline{text}{addition}).
+  \item Its syntax type (e.g. \mintinline{text}{Expression}).
+  \item A syntax description (e.g. \mintinline{text}{a:Expression "+" b:Expression}).
+  \item Some (optional) extra data (e.g. precedence via \mintinline{text}{#prec} and associativity via \mintinline{text}{#assoc}).
+  \item An expansion specification, here omitted and instead represented by \mintinline{text}{<...>}. See Section~\ref{sec:design-implementation} for more information.
+\end{itemize}
 
+This section deals mostly with the syntax description and its interaction with parsing.
+
+% TODO: note that the lexer limitation is not fundamental, it's just a limitation of the implementation / the easiest thing that is good enough for now.
 Parsing consists of two steps: lexing and the actual parsing. The former uses a fixed lexer that produces five kinds of tokens: integers, real numbers, strings, identifiers and symbols. The lexical syntax of these are chosen to align as well as possible with the syntax of common programming languages, which works well enough in most cases. It does however represent a clear area of possible improvement.
 
-Note also that the lexer produces no keywords. Instead any syntax construction that requires a keyword is expected to include a quoted string (e.g. \mintinline{text}{"for"}) which will match a specific token (e.g. an identifier with the text ''for'').
+Note also that the lexer produces no keywords. What would normally have been a keyword is instead lexed as an identifier, which a syntax construction can match against by using a quoted literal in the syntax description. The built in syntax type \mintinline{text}{Identifier} then matches any identifier that never appears in a quoted literal, effectively simulating reserved keywords.
 
-The actual parsing is guided by the syntax constructions. If we for a moment disregard precedence and associativity there is a very clear connection between syntax constructions and a context free grammar: each construction is a production, while each syntax type is a non-terminal. To include precedence and associativity we do a standard transformation and introduce an extra non-terminal for each precedence level, producing the following grammar:
+The actual parsing is then guided by the syntax constructions. If we for a moment disregard precedence and associativity there is a very clear connection between syntax constructions and a context free grammar: each construction is a production, while each syntax type is a non-terminal.
+
+\setlength{\grammarindent}{8em}
+\begin{grammar}
+<Expression> ::= <Expression> '+' <Expression>
+  \alt <Expression> '*' <Expression>
+  \alt '(' <Expression> ')'
+  \alt <Integer>
+  \alt '[' <Expression> (',' <Expression>)* ']'
+\end{grammar}
+
+\synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vectorLiteral} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences. Later on, in Section~\ref{sec:design-implementation}, the use of EBNF operators will have a larger impact, but for now they are merely conveniences.
+
+This grammar is quite ambiguous, but the syntax constructions above contain additional information we can use to construct an unambiguous grammar instead: precedence and associativity. Including precedence and associativity in a grammar is a rather well known transformation that adds an extra non-terminal for every precedence level, like so:
 
 \setlength{\grammarindent}{8em}
 \begin{grammar}
@@ -285,28 +328,17 @@ The actual parsing is guided by the syntax constructions. If we for a moment dis
   \alt '[' <Expression> (',' <Expression>)* ']'
 \end{grammar}
 
-\begin{grammar}
-<Expression> ::= <Expression> '+' <Expression>
-  \alt <Expression> '*' <Expression>
-  \alt '(' <Expression> ')'
-  \alt <Integer>
-\end{grammar}
+The precedence and associativity transformation above is slightly extended from the common one: it applies to any production, not only to operators. Precedence affects recursive uses of the same syntax type (i.e. using \mintinline{text}{Expression} in an \mintinline{text}{Expression}), regardless of position in the syntax description, by only allowing recursing to the same level or the next. Associativity further affects this by allowing recursion to the same level only in the leftmost recursion (with left associativity) or the rightmost recursion (with right associativity).
 
-\synt{Integer} matches any single integer token. Note the presence of the extended BNF operator * in the final production, present also in the \mintinline{text}{vecLit} syntax construction. Syntax constructions can use + (one or more), * (zero or more) and ? (zero or one) as conveniences. Later on, in section~\ref{sec:design-implementation}, the use of EBNF operators will have a larger impact, but for now they are mereply conveniences.
+This expansion was chosen to align with the normal definition of operator precedence, but to not be limited to only operators, to provide a tool for disambiguation in general.
 
 The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple syntax constructions to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989The-syntax-defi}.
 
-\subsection{Ambiguity}
-
-
+A reader with previous experience of context free grammars may have some qualms at this point; if the syntactical part of syntax constructions is just context free grammars with some rewriting help, won't ambiguous grammars be an issue? Context free grammars are not unambiguous in the general case, in fact, determining if a context free grammar is ambiguous is undecidable in general (TODO: ref). As such, syntax constructions provide no static guarantees on ambiguity, but provides good error messages when ambiguous code is encountered. See sections \ref{sec:implementation-ambiguity-detection} and \ref{sec:errors-ambiguous} for implementation and evaluation of these errors, respectively, and sections \ref{sec:ambiguous-lists}, \ref{lst:ambiguous-let-expr}, and \ref{sec:discussion-ambiguity}, amongst others, for consequences, evaluation, and discussion.
 
 \section{Bindings} \label{sec:design-bindings}
 
-To support the goal of abstraction preservation and good error messages syntax constructions include name binding semantics.
-
-To motivate the design of the binding semantics this section will examine three examples.
-
-\begin{listing}
+\begin{listing}[h]
 \begin{minted}{ocaml}
 let a = "value" in
 print_string a
@@ -315,33 +347,42 @@ print_string a
 \label{lst:nested-binding-example}
 \end{listing}
 
+To support the goal of abstraction preservation and good error messages syntax constructions include name binding semantics.
+
+To motivate the design of the binding semantics this section will examine three examples.
+
 Listing~\ref{lst:nested-binding-example} demonstrates simple let bindings. A let binding introduces bound names to a sub-tree (\mintinline{ocaml}{a} is bound in \mintinline{ocaml}{print_string a} in this case). The syntax construction below codifies these semantics.
 
 \begin{minted}{text}
-syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression {
+syntax let:Expression =
+  "let" x:Identifier "=" e:Expression
+  "in" body:Expression
+{
   #bind x in body
   <...>
 }
 \end{minted}
 
-The syntax type \mintinline{text}|Identifier| is a built in type that participates in name binding. \mintinline{text}|#bind x in body| specifies that \mintinline{text}|x| is part of a definition, otherwise it would be interpreted as a reference that must be bound in the current environment.
+The syntax type \mintinline{text}{Identifier} is a built in type that participates in name binding. \mintinline{text}{#bind x in body} specifies that \mintinline{text}{x} is part of a definition, otherwise it would be interpreted as a reference that must be bound in the current environment.
 
-Listing~\ref{lst:imperative-binding-example} demonstrates scoping rules in Java. Variables cannot be used before their declaration nor after the scope they were introduced in ends.
-
-\begin{listing}
+\begin{listing}[h]
 \begin{minted}{java}
 String first = "first";
 {  // Opens a new scope
   String second = "second";
-  System.out.println(first + second + third);  // Error: cannot find third
+  // Error: cannot find third
+  System.out.println(first + second + third);
   String third = "third";
   System.out.println(first + second + third);
 }  // Closes the new scope
-System.out.println(first + second + third);  // Error: cannot find second or third
+// Error: cannot find second or third
+System.out.println(first + second + third);
 \end{minted}
 \caption{An example in Java demonstrating scopes and imperative style local variables.}
 \label{lst:imperative-binding-example}
 \end{listing}
+
+Listing~\ref{lst:imperative-binding-example} demonstrates scoping rules in Java. Variables cannot be used before their declaration nor after the scope they were introduced in ends.
 
 These semantics can be described using only capabilities introduced so far, but with some drawbacks. For example, variable declaration, scope introduction and method call could be specified as follows:
 
@@ -414,17 +455,31 @@ syntax funcDecl:Statement =
 
 This solution once again disconnects statements, allowing each to be defined in isolation, even when they need to affect adjacent statements with a binding.
 
-% TODO: need consistent terminology for things (expression is used to mean node sometimes, but Expression is commonly used for a different meaning, is probably not a very good thing.)
-% TODO: this almost certainly needs a different title, since it's not about the implementation of the system, rather about the implementation of a syntax construction
-\section{Implementation} \label{sec:design-implementation}
+The interaction between EBNF operators and scopes bears further elaboration. A name used in a \mintinline{text}{#scope} declaration refers to all repetitions of the name, i.e., \mintinline{text}{#scope (pattern body)} below creates a single scope that encompasses every repetition of \mintinline{text}{pattern} and \mintinline{text}{body}.
 
-Syntax constructions, being essentially macros, need a way to specify how they expand into whatever underlying language they are implemented on top of. Additionally, the goal of abstraction preservation requires that the implementation and expansion is never exposed to an end user. As such, the expansion must never fail or produce a malformed program.
+\begin{minted}{text}
+syntax match:Expression =
+  "match" e:Expression "with"
+  arm:("|" pattern:Pattern "->" body:Expression)+
+{
+  #scope (pattern body)
+  #scope (e)
+  <...>
+}
+\end{minted}
+
+In this case however we want a scope per arm, a names bound by a \mintinline{text}{pattern} should only be available in the corresponding \mintinline{text}{body}. Changing the scope declaration to \mintinline{text}{#scope arm:(pattern body)} describes exactly that: create one scope per repetition of \mintinline{text}{arm} containing only the occurrences of \mintinline{text}{pattern} and \mintinline{text}{body} within that repetition.
+
+% TODO: need consistent terminology for things (expression is used to mean node sometimes, but Expression is commonly used for a different meaning, is probably not a very good thing.)
+\section{Expansion} \label{sec:design-implementation}
+
+Syntax constructions, being essentially macros, need a way to specify how they expand into whatever underlying language they are implemented on top of. Additionally, the goal of abstraction preservation requires that the implementation of a syntax construction is never exposed to an end user. As such, the expansion must never fail or produce a malformed program.
 
 To achieve this the expansion is specified in a fairly limited way, which makes checking the implementation simpler.
 
 Furthermore, the system requires a base language, some point at which point expansion is finished. Syntax constructions themselves pose no requirements on this language and instead allow a construction to be marked as ''builtin'', meaning part of the base language.
 
-As expansion proceeds and syntax constructions are replaced by syntax constructions closer to the base language a similar transformation will take place on syntax types, a program will go from using the types of its language, to the types of the host language, etc. all the way down to the base language. To ensure that the final expanded program is syntactically correct each syntax type must designate either its underlying type or that it is a syntax type of the base language, i.e. ''builtin''. For example:
+As expansion proceeds and syntax constructions are replaced by syntax constructions closer to the base language a similar transformation will take place on syntax types, a program will go from using the types of its language, to the types of the host language, etc., all the way down to the base language. To ensure that the final expanded program is syntactically correct each syntax type must designate either its underlying type or that it is a syntax type of the base language, i.e. ''builtin''. For example:
 
 \begin{minted}{text}
 syntax type BaseExpression = builtin
@@ -435,7 +490,7 @@ syntax lambda:BaseExpression = "\" x:Identifier "." e:Expression {
 }
 \end{minted}
 
-In the simplest case an implementation is simply a syntactical expression in the target language, with elements of the original syntax construction spliced in, similar to quote and unquote capabilities in similar systems. For example:
+In the simplest case an expansion is simply a syntactical expression in the target language, with elements of the original syntax construction spliced in, similar to quote and unquote capabilities in similar systems. For example:
 
 \begin{minted}{text}
 syntax type Expression = BaseExpression
@@ -448,12 +503,16 @@ syntax let:Expression = "let" x:Identifier "=" e:Expression "in" body:Expression
 }
 \end{minted}
 
-Here a let expression is expanded into a lambda expression and function application. \mintinline{text}{BaseExpression`}, \mintinline{text}{`id} and \mintinline{text}{`t} assist with disambiguation in parsing, see Section~\ref{sec:disambiguation-implementation} for more details. The underlying type of expressions must agree. It is worth noting here that during expansion all sub-expressions (e.g. \mintinline{text}{x} and \mintinline{text}{body} above) are treated as atomic, no inspection or modification is permitted.
+Here a let expression is expanded into a lambda expression and function application. \mintinline{text}{BaseExpression`}, \mintinline{text}{`id} and \mintinline{text}{`t} assist with disambiguation in parsing, see Section~\ref{sec:disambiguation-implementation} for more details. The underlying type of expressions must agree. It is worth noting here that during expansion all sub-expressions (e.g. \mintinline{text}{x} and \mintinline{text}{body} above) are treated as atomic, no inspection or modification is permitted or possible.
 
-If the original syntax construction contains EBNF operators some elements may occur multiple times, forming lists of syntactical elements. These may not be used directly in the implementation, where only singular syntactical elements are allowed. To produce a singular syntactical element from a list one may instead use a fold:
+If the original syntax construction contains EBNF operators some elements may occur multiple times, forming lists of syntactical elements. These may not be used directly in the expansion, where only singular syntactical elements are allowed. To produce a singular syntactical element from a list one may instead use a fold:
 
 \begin{minted}{text}
-syntax switch:Expression = "switch" e:Expression "{" cases:("case" test:Expression ":" result:Expression)* "default" ":" default:Expression "}" {
+syntax switch:Expression =
+  "switch" e:Expression "{"
+  cases:("case" test:Expression ":" result:Expression)*
+  "default" ":" default:Expression "}"
+{
   Expression`
     let x = `t(e) in
     `t(foldr cases rest
@@ -464,17 +523,99 @@ syntax switch:Expression = "switch" e:Expression "{" cases:("case" test:Expressi
 }
 \end{minted}
 
-Here a switch is translated to a simple series of ifs, checking for equality with each case in turn. The fold expression takes four arguments: what list to fold over, the name of the result so far (the accumulator), the expression that will be used to construct the next result, and the initial value. The example uses a right fold, additionally left fold and versions without an initial value are available, the latter only being usable if the list contains at least one value (i.e. it was constructed using the ''+'' operator, not ''*'' or ''?'').
+Here a switch is translated to a simple series of ifs, checking for equality with each case in turn. The fold expression takes four arguments: what list to fold over, the name of the result so far (the accumulator), the expression that will be used to construct the next result, and the initial value.
 
-\subsection{Disambiguation in Implementation Parsing} \label{sec:disambiguation-implementation}
+A reader with previous experience of folds may be somewhat surprised by the syntax used here: nothing looks terribly much like a function and there is no name binding the current item in the list being folded over. Using psuedocode and named arguments the above fold is essentially equivalent with:
 
-The implementation body of a syntax construction is intended to be written in some underlying language as a sort of template, into which the child nodes of the syntax construction can be slotted to produce the expanded abstract syntax tree. Parsing this template turns out to be ambiguous without certain extra precautions, which are motivated and described in the next two sections.
+\begin{minted}{text}
+foldr(list = cases,
+      initial = default,
+      f = ((test, result), rest) =>
+        (Expression` if `t(test) == x
+                       then `t(result)
+                       else `t(rest)))
+\end{minted}
+
+The function is run once per repetition of \mintinline{text}{cases} and can use all named syntax constructions that are not in a nested inner repetition or in a repetition that does not contain \mintinline{text}{cases}. For example, in \mintinline{text}{example} below the following things are true:
+\begin{itemize}
+  \item The first two folds are equivalent, since \mintinline{text}{right} and \mintinline{text}{a} repeat exactly as often.
+  \item All bodies can use \mintinline{text}{a} as a singular value.
+  \item Only \mintinline{text}{body3} and \mintinline{text}{body4} can use \mintinline{text}{b} as a singular value.
+  \item The third fold will use \mintinline{text}{body3} once per occurrence of \mintinline{text}{b} across all repetitions of \mintinline{text}{right}, while the nested fold in the fourth will only use \mintinline{text}{body4} once per \mintinline{text}{b} \emph{in the current repetition} of \mintinline{text}{right}.
+\end{itemize}
+
+\begin{minted}{text}
+syntax example:T =
+  left:"left"+ right:(a:T b:T*)+
+{
+  foldr right acc
+    <body1>
+    <initial>
+
+  foldr a acc
+    <body2>
+    <initial>
+
+  fold b acc
+    <body3>
+    <initial>
+
+  foldr right acc1
+    (foldr b acc2
+      <body4>
+      <initial>)
+    <initial>
+}
+\end{minted}
+
+Having all named syntax elements implicitly available turned out to be more convenient than requiring some form of pattern matching or explicitly mentioning the ones you wanted to use, and presents no ambiguity for the reader as long as you already know the syntax.
+
+The example uses a right fold, additionally left fold and versions without an initial value are available, the latter only being usable if the list contains at least one value (i.e. it was constructed using the ''+'' operator, not ''*'' or ''?'').
+
+\subsection{Expansion Checking and Correctness} \label{sec:expansion-checking}
+
+One of the design goals of syntax constructions is that they must provide good error messages when some aspect of the system is misused. For the purposes of this section a good error message presents a user with the information required to fix the error, and presents that information in terms of code that user is working with. Notably then a poorly implemented syntax construction should result in an error message for the syntax construction implementer, not for an unsuspecting end-user using the syntax construction. Similarly, an end-user misusing a syntax construction should get an error message referring to their code, not to its expansion.
+
+To ensure that this split is maintained we require that expansion never introduces an error, i.e. error-free code is expanded into error-free code. This places a fairly stringent requirement on the syntax construction implementer: the expansion of a syntax construction must never introduce an error, no matter what. The meaning of error-free bears explaining however. Syntax constructions in their current incarnation, following the delimitations set in Section~\ref{sec:delimitations}, know only one aspect of the semantics of its languages: name binding. ''Error-free'' thus means ''without binding errors'', e.g. no unbound references or duplicate definitions.
+
+Presenting an error to an end-user misusing a syntax construction is then straight-forward, perform name resolution on the unexpanded abstract syntax tree and report any error encountered. If there are no errors the code is correct and can be fully expanded without introducing errors.
+
+Ensuring that an expansion will never introduce an error is rather trickier. The expansion must be correct regardless of the structure of the surrounding syntax tree. For example, the following definition of \mintinline{text}{let}, that translates a \mintinline{text}{let}-expression to an application of a lambda, contains a somewhat subtle bug:
+
+\begin{minted}{text}
+syntax let:Expression =
+  "let" x:Identifier "="
+  e:Expression "in"
+  body:Expression
+{
+  #bind x in body
+  #scope (body)
+  Expression`
+    (\`t(x) -> `t(body)) `t(e)
+}
+\end{minted}
+
+If the syntax construction represented by \mintinline{text}{e} binds a name, for example \mintinline{text}{foo}, using \mintinline{text}{#bind foo after}, and the \mintinline{text}{body} uses it, then this expansion will introduce an error. The expansion has \mintinline{text}{e} appearing \emph{after} \mintinline{text}{body}, which breaks the reference and introduces an error, namely that \mintinline{text}{foo} in \mintinline{text}{body} is unbound.
+
+The language designer may at this point consider this somewhat nonsensical, perhaps no expressions expose names in that way, but since syntax constructions are made for composition and reuse we cannot assume that to always be true. Thus checking assumes an open universe of syntax constructions, i.e. all syntax types conceptually include syntax constructions that both export and use names in all possible ways, and an expansion must not introduce an error, even in their presence.
+
+In this particular case the solution is to place \mintinline{text}{e} in its own scope, which prevents \mintinline{text}{body} from referencing any names from \mintinline{text}{e}. Additionally this aligns better with the intended semantics; it specifies explicitly that nothing bound in \mintinline{text}{e} can be used elsewhere.
+
+Another common aspect of rewriting systems is that of name capture, most commonly unintentional name capture. The expansion of a syntax construction cannot perform name capture, intentional or not, by construction. The guarantee that is given is that if an identifier $id_r$ references a binding identifier $id_b$ before expansion then any copy of $id_r$ present after expansion references some copy of $id_b$. In combination with the original syntax tree not containing any unbound references (since they would produce an error) this prevents any form of name capture.
+
+This preservation of reference is done by ensuring that each symbol present in the syntax tree only occurs in binding position once. This means that if $id_r$ is bound after expansion, then it must be bound to a copy if $id_b$, since it is the only identifier with that symbol. Thus absence of errors implies absence of name capture.
+
+Binding symbols are kept unique by having name resolution replace each symbol with a newly generated, unique symbol in both binding and referencing positions. Since an expansion may use a syntactical element twice or more each expansion may need a new name resolution pass. This pass is guaranteed to succeed, as per the guarantees mentioned above, and is only necessary to generate new symbols.
+
+\subsection{Disambiguation in Expansion Specification Parsing} \label{sec:disambiguation-implementation}
+
+The expansion specification of a syntax construction is intended to be written in some underlying language as a sort of template, into which the child nodes of the syntax construction can be slotted to produce the expanded abstract syntax tree. Parsing this template turns out to be ambiguous without certain extra precautions, which are motivated and described in the next two sections.
 
 \subsubsection{Template Type Annotations}
 
-As mentioned previously the underlying types must agree throughout the implementation, for example the expanded syntax tree must have the same underlying type as the syntax construction itself; i.e. the implementation uses structural typing.
+As mentioned previously the underlying types must agree throughout the expansion, for example the expanded syntax tree must have the same underlying type as the syntax construction itself; i.e. the expansion uses structural typing.
 
-Thus, when parsing the implementation body any syntax construction that shares an underlying syntax type is valid. However, since the core language is likely to be simple, but flexible, it is likely to have few syntax types. For example, the core language used during evaluation (Section~\ref{sec:evaluation}) contains a single syntax type: \mintinline{text}{BExpression}. As such, many non-core languages will have syntax types that share an underlying type, which becomes a problem if their concrete syntax also overlaps.
+Thus, when parsing the expansion specification any syntax construction that shares an underlying syntax type is valid. However, since the core language is likely to be simple, but flexible, it is likely to have few syntax types. For example, the core language used during evaluation (Section~\ref{sec:evaluation}) contains a single syntax type: \mintinline{text}{BExpression}. As such, many non-core languages will have syntax types that share an underlying type, which becomes a problem if their concrete syntax also overlaps.
 
 As an example, consider the code \mintinline{ocaml}{[1]} in OCaml. Depending on context it may be parsed as a list literal, evaluating to a list with the single element \mintinline{ocaml}{1}, or as a pattern, matching a list containing \mintinline{ocaml}{1} as its only element. When implementing these constructions using syntax constructions they would have different syntax types, \mintinline{text}{Expression} and \mintinline{text}{Pattern}, respectively. Their underlying type would however be shared, assuming they use the aforementioned core language. With this in mind, the following syntax construction does not parse unambiguously:
 
@@ -496,18 +637,18 @@ syntax oneList:Expression = "one" {
 
 Using child nodes in the implementation, splicing them into the template, also requires a form of type annotation, but this comes more out of a limitation of the current implementation than of a need for the general method.
 
-Consider the implementation of the syntax construction \mintinline{text}{postfixAdd} below, assuming the two preceeding syntax construction are in scope and available for use.
+Consider the implementation of the syntax construction \mintinline{text}{postfixAdd} below, assuming the three preceding syntax construction are in scope and available for use.
 
 \begin{minted}{text}
 syntax add:Expression = a:Expression "+" b:Expression {
   builtin
 }
 
-syntax var:Expression = id:Identifier {
+syntax variable:Expression = id:Identifier {
   builtin
 }
 
-syntax lit:Expression = int:Integer {
+syntax literal:Expression = int:Integer {
   builtin
 }
 
@@ -518,23 +659,127 @@ syntax postfixAdd:Expression = a:Expression b:Expression "+" {
 
 The appearances of \mintinline{text}{a} and \mintinline{text}{b} in the body are meant to refer to the child nodes declared in the syntactic description. When parsing the body they must thus be parsed as unknown syntax constructions of type \mintinline{text}{Expression}, even though they syntactically appear as identifiers.
 
-However, the parser in the current implementation is based entirely on context free grammars and can thus not use the information from the syntax description when parsing the body. Parsing the above syntax construction with a context free parser would require trying to interpret each identifier either as an identifier, or a spliced child node, and then disambiguating afterwards.
+However, the parser in the current implementation is based entirely on context free grammars and can thus not use the information from the syntax description when parsing the body (that would be context-\emph{dependent}). Parsing the above syntax construction with a context free parser would require trying to interpret each identifier either as an identifier, or a spliced child node, and then disambiguating afterwards.
 
-This turns out to create a massively ambiguous grammar. In the example above the identifier \mintinline{text}{a} can be interpeted as one of four things:
+This turns out to create a massively ambiguous grammar. In the example above the identifier \mintinline{text}{a} could be interpreted as one of four things:
 \begin{enumerate}
-  \item A normal identifier, thus parsing as a \mintinline{text}{var} syntax construction containing an identifier with the symbol ''a''.
-  \item A spliced identifier, thus parsing as a \mintinline{text}{var} syntax construction containing an identifier with an unknown symbol.
-  \item A spliced integer, thus parsing as a \mintinline{text}{lit} syntax construction containing an integer with an unknown value.
+  \item A normal identifier, thus parsing as a \mintinline{text}{variable} syntax construction containing an identifier with the symbol ''a''.
+  \item A spliced identifier, thus parsing as a \mintinline{text}{variable} syntax construction containing an identifier with an unknown symbol.
+  \item A spliced integer, thus parsing as a \mintinline{text}{literal} syntax construction containing an integer with an unknown value.
   \item A spliced \mintinline{text}{Expression}.
 \end{enumerate}
 
-The first two cases could plausably be handled in the same way, reducing it to three valid parses. The total number of parse trees produced with this grammar is nonetheless still exponential in the number of identifiers in the source. Introducing syntax for splicing disambiguates the first case from the remaining three, and requiring a limited form of type tagging disambiguates between the remaining three.
+The first two cases could plausibly be handled in the same way, reducing it to three valid parses. The total number of parse trees produced with this grammar is nonetheless still exponential in the number of identifiers in the source. Introducing syntax for splicing disambiguates the first case from the remaining three, and requiring a limited form of type tagging disambiguates between the remaining three.
 
 The solution used in this thesis requires tagging to distinguish a spliced identifier, integer, float, string or syntax construction. Tagging a splice as a syntax construction, rather than a specific syntax type, appears sufficient. No ambiguous implementations have appeared in practice thus far, though they are still possible.
 
 \section{Proof of Termination} \label{sec:proof-termination}
 
 \section{Proof of Soundness} \label{sec:proof-no-errors}
+
+\chapter{Implementation}
+
+The implementation of the ideas presented in this thesis is written in Haskell and is available at (TODO: refer to public repository, with a specific tag or commit). It is structured similarly to a staged compiler. The stages are as follows:
+
+% TODO: in design above I should probably write with the assumption that we are parsing a token stream, rather than talking about the lexing choice. Possibly anyway
+
+% TODO: include expansion checking here when it is implemented
+
+\begin{description}
+  \item[Lexer] The lexer is intended to be the simplest possible lexer that still produces results suitable for the grammars later generated by the syntax constructions. It lexes everything as identifiers, symbols, or string, integer or float literals. Most adjacent punctuation and special characters are merged into single symbols, with a few exceptions to create behaviour similar to other programming languages. For example, parentheses will never merge, thus \mintinline{c}{(a++)} will lex as \mintinline{text}{symbol('(')}, \mintinline{text}{identifier('a')}, \mintinline{text}{symbol('++')} and \mintinline{text}{symbol(')')}.
+
+  \item[Syntax construction parser] The syntax construction parser is a simple context free grammar, parsed using an Earley parser. It is somewhat complicated by the need to parse arbitrary source code in the expansion description. This is solved by merging the syntax construction grammar with the generated grammar from the source code parser. Due to a limitation in the parsing algorithm used the grammar cannot be modified during parsing, thus the expansion description of a syntax construction cannot use syntax constructions defined in the same file, only ones defined in an earlier file.
+
+  \item[Syntax construction name resolver] The syntax construction name resolver will prepare the parsed syntax constructions for use later in the implementation. All names used are resolved to locations in the syntax description and an expansion function is produced for syntax constructions that are not marked as builtin. Note that this phase does some checking of the syntax construction, but only what is necessary to produce the binding information and expansion function. The checking here is not sufficient to ensure that no binding errors appear during expansion.
+
+  \item[Expansion checker] The expansion checker checks that an expansion can never introduce an error during expansion. Similar to type checking and various other forms of static analysis the expansion checker is not a necessary part, but its absence does of course remove any guarantees on errors.
+
+  \item[Source code parser] The source code parser generates a context free grammar from a set of syntax constructions and then uses it to parse source code using an Earley parser.
+  \begin{description}
+    \item[Ambiguity detection] If the grammar is ambiguous, and the source code being parsed exposes this ambiguity, one parse tree will be produced for each possible parse, and all of them will be compared to determine the ambiguous sections of the source code.
+  \end{description}
+
+  \item[Source code name resolver] The source code name resolver takes a syntax tree generated by the parser and checks for name binding errors. If none are found all symbols are replaced with newly generated symbols in such a way that each symbol appears in a binding position exactly once, while preserving the referencing relation between identifiers.
+
+  \item[Source code expander] The source code expander repeatedly finds a single syntax construction to expand, uses its expansion function, then runs the name resolver over the result, until all remaining syntax constructions are marked as builtin. This is the simplest implementation that will always be correct, but it almost always does far more work than necessary. See Section~\ref{sec:performance} for more information.
+
+  \item[Core language interpreter] The core language interpreter evaluates a syntax tree composed only of syntax constructions that are part of the core language described in Section~\ref{sec:core-language}, but is largely unrelated to syntax constructions as such. It is only used for validation in Chapter~\ref{sec:evaluation}.
+\end{description}
+
+\section{Source Code Parser}
+
+The algorithm for translating a set of syntax constructions to a context free grammar proceeds largely as follows:
+
+\begin{tabular}{c|p{10cm}}
+$t$ & A syntax type. \\
+$c$ & A syntax construction. \\
+$c:t$ & $c$ has syntax type $t$. \\
+$i_c$ & The precedence of $c$, $+\infty$ unless otherwise specified. \\
+$N^t_i$ & A non-terminal generated by the constructions $c$ such that $c:t \land i = i_c$. \\
+$next(N^t_i)$ & The non-terminal with the next higher precedence. \\
+$N^t_-$ & Shorthand for the non-terminal generated by the lowest precedence group in $t$. \\
+$N^t_+$ & Highest precedence group in $t$. Note that $N^t_+ \neq N^t_-$ is not true in general. \\
+\end{tabular}
+
+\begin{enumerate}
+  \item Group syntax constructions by their syntax type, then by precedence (constructions without defined precedence are assumed to have infinite precedence).
+  \item For each such group, generate a non-terminal $N^t_i$:
+  \begin{enumerate}
+    \item For each syntax construction $c$, generate one production.
+    \item Identifier, integer, float, string, and symbol each match one token of the corresponding kind.
+    \item References to a syntax type $t'$ matches non-terminals according to the following, picking the first that applies:
+    \begin{itemize}
+      \item If $t \neq t'$, match $N^{t'}_-$.
+      \item If $c$ has the highest precedence in $t$, match $N^t_-$.
+      \item If $c$ has undefined associativity, or is left-associative and $t'$ is the leftmost occurrence, or is right-associative and $t'$ is the rightmost occurrence, match $N^t_{i_c}$.
+      \item Otherwise match $next(N^t_{i_c})$.
+    \end{itemize}
+  \end{enumerate}
+  \item For each non-terminal $N^t_i \neq N^t_+$ add a production matching the non-terminal $next(N^t_i)$.
+\end{enumerate}
+
+\subsection{Ambiguity Detection} \label{sec:implementation-ambiguity-detection}
+
+If the generated context free grammar is ambiguous and we parse source code that exposes this ambiguity, i.e., can be parsed in multiple ways, we wish to produce a useful error message. In such a case the parser produces multiple abstract syntax trees, i.e., detecting that there is an ambiguity is trivial, but the mere fact that a file can be parsed in multiple ways provides no actionable information towards fixing the problem.
+
+Instead we wish to produce an error that refers only to the actually ambiguous parts of the source file. Furthermore, we wish to present the different parsings in an understandable way.
+
+Starting with the second point, assume that no operators have defined precedence or associativity and consider the following expression:
+
+$$ a + b * c $$
+
+It can be parsed in two ways:
+
+$$ (a + b) * c $$
+$$ a + (b * c) $$
+
+The former is a product of a sum and a variable, the latter is a sum of a variable and a product. Further describing the inner structure of the sub-expressions (sum of two variables and product of two variables respectively), gives little to no extra useful information for understanding the two parsings. Consider this more complicated example:
+
+$$ a + b + c + d $$
+
+The parsings are as follows:
+
+$$ ((a + b) + c) + d $$
+$$ (a + (b + c)) + d $$
+$$ (a + b) + (c + d) $$
+$$ a + ((b + c) + d) $$
+$$ a + (b + (c + d)) $$
+
+All of these are sums, the first two of a sum and a variable, the next of two sums, the last two of a variable and a sum. It is the hypothesis of this thesis that this description is sufficient, i.e. each parsing can be described by a single top-level node (here sum) and a shallow description of its children (here sum and variable, two sums, and variable and sum respectively). Note that each of these would also include the area of the source they cover as well. This will be described as a two-level representation. It appears to be enough information for a user to solve one part of the ambiguity without being overwhelmed.
+
+The task of producing an error message then becomes selecting sub-trees from the syntax trees such that:
+
+\begin{itemize}
+  \item The unselected parts are identical across the different syntax trees, including covered source area (i.e. we report all ambiguities).
+  \item The selected sub-trees from the same position across the syntax trees cover the same source area (i.e. each report has a clear connection to the source).
+  \item At least two selected sub-trees in the same position of their respective syntax tree have different two-level representations (i.e. all reports actually show different parsings).
+  \item No selected sub-tree is contained in another (i.e. we only report one ambiguity per source file area).
+  \item No selected sub-tree can be replaced by one of its children (also replacing the corresponding sub-trees from the other syntax trees) while still satisfying the points above (The selected sub-trees are minimal).
+\end{itemize}
+
+The algorithm is fairly simple. We use a form of shallow equality where two nodes are equal if they cover the same source area and have the same kind (e.g. they are instances of the same syntax construction). With this in mind we traverse all the syntax trees in parallel, top to bottom, until we encounter a node that is shallowly different between at least two syntax trees. If any sibling of the node also is shallowly different, select the parent, otherwise select the node and keep traversing down the siblings.
+
+% TODO: it is not actually obvious that the algorithm satisfies all the requirements above, nor that all requirements are required, nor that it's always possible to satisfy all requirements.
 
 \chapter{Evaluation} \label{sec:evaluation}
 
@@ -545,11 +790,13 @@ For evaluation two programming languages have been implemented: a subset of Lua 
 
 For each of the languages a few interesting features are discussed, including their implementation, along with several weaknesses of the system.
 
-\section{Core Language} \label{sec:core-language}
+\section{Case Studies in Expressiveness}
+
+\subsection{Core Language} \label{sec:core-language}
 
 Syntax constructions does not specify a core language, but instead treats any construction marked as ''builtin'' as a core language construct, expanding all constructions encountered until only builtin constructions remain. However, to evaluate the expressibility of semantics for syntax constructions such a language must exist. This section describes the core language used throughout the evaluation section.
 
-Both languages are implemented using the same underlying language, i.e. the same set of syntax constructions marked as builtin (for more information, see section~\ref{sec:design-implementation}). The core language is a largely functional language using curried functions and eager execution, with a few additions:
+Both languages are implemented using the same underlying language, i.e. the same set of syntax constructions marked as builtin (for more information, see Section~\ref{sec:design-implementation}). The core language is a largely functional language using curried functions and eager execution, with a few additions:
 \begin{itemize}
   \item Sequential composition.
   \item Non-nested bindings, i.e \mintinline{text}{defAfter} and \mintinline{text}{defAround}. % TODO: probably refer to a previous definition / explanation of this
@@ -559,35 +806,57 @@ Both languages are implemented using the same underlying language, i.e. the same
     \item[\mintinline{text}{#fix}]
     \item[\mintinline{text}{#callcc}]
     \item[\mintinline{text}{#ref}, \mintinline{text}{#deref} and \mintinline{text}{#assign}]
-  \item Expression functions. Syntactically similar to a function (\mintinline{text}{efun x. body} vs. \mintinline{text}{fun x. body}) these work around a limitation in syntax constructions. More will be said about them later, but for now they are functions that must be applied immediately. They are used to work around the atomic nature of sub-constructions.
   \end{description}
+  \item Expression functions. Syntactically similar to a function (\mintinline{text}{efun x. body} vs. \mintinline{text}{fun x. body}) these work around a limitation in syntax constructions. More will be said about them later, but for now they are functions that must be applied immediately. They are used to work around the atomic nature of sub-constructions.
 \end{itemize}
 
-\subsection{Expression Functions} \label{sec:efun-drawbacks}
+\subsubsection{Expression Functions} \label{sec:efun-drawbacks}
+
+Several syntax constructions in the evaluated languages turn out to require some information about their context, be it what value to pattern match on or where to divert control flow to. Some of these cases can be solved by having the syntax construction produce a function and letting its context provide the necessary information via a function argument, but not all.
+
+Problems arise when the syntax construction both requires information from its context, and additionally needs to expose bindings via \mintinline{text}{#bind before} or \mintinline{text}{#bind after}. Functions introduce a scope around their body, preventing any such bindings from being visible.
+
+To solve this issue this thesis adds an additional kind of function that must be applied immediately and does not introduce a scope around its body. They essentially enable syntax constructions to not only be syntax, but also functions from syntax to syntax. All expression function application should be evaluated \emph{before} other evaluation, since they are intended to model functions during the expansion process, which should be complete before evaluation.
+
+There are two problems with this solution. Firstly, expression functions are a very unsound addition to the core language. Consider this expression:
+
+\begin{minted}{text}
+(efun a. defAfter x = a) x
+\end{minted}
+
+The expression is correct, binding-wise, \mintinline{text}{x} is bound inside the expression function and is then in scope on the outside. Evaluating the application of the expression functions produces the following expression however:
+
+\begin{minted}{text}
+defAfter x = x
+\end{minted}
+
+This is not correct, \mintinline{text}{x} is not in scope in the definition of \mintinline{text}{x}, thus this produces an error.
+
+The second problem is inconvenience, many syntax constructions suddenly need to take arguments and pass them on to their children, even though they themselves have no use of them, simply because the information is further away than the direct parent. This additionally has an impact on composing multiple languages. No new syntax constructions can be added in-between the syntax construction that gives the context and the one that uses it without threading the information, but the odds of a syntax construction from a different language being written to thread the same information seem minuscule, thus importing a syntax construction from a different language is unlikely to work if either language uses that kind of contextual information.
+
+Expression functions are thus clearly an undesirable solution, but a better option is left for future work.
 
 % TODO: probably write about efuns and their drawbacks separately from each language below, seems weird to either duplicate it, or to just have it in one of the language sections and not the other, since they should have no dependenceies on each other
 
 % TODO: own thoughts, to be made into actual evaluation thoughts later
-Control flow altering things are difficult to include without either explicit support for the particular control flow, or names that can be bound across constructions without appearing in the original source code. The return statement must be able to connect to the return point, without anything outside it altering it. Could be done if the construction returned a "function", that takes the return point and produces the actual expanded code, but that is not possible at present.
+% Control flow altering things are difficult to include without either explicit support for the particular control flow, or names that can be bound across constructions without appearing in the original source code. The return statement must be able to connect to the return point, without anything outside it altering it. Could be done if the construction returned a "function", that takes the return point and produces the actual expanded code, but that is not possible at present.
 
-- The efun builtin is unsound, but something like it is required to implement some of the things when each sub-construction is atomic
-- fix seems reasonable
-- callcc probably reasonable, but probably not necessary to have the full support, instead basically have it be a block that you can break out of by calling a function. Not entirely sure if that can be represented in a sound way with the current system
-- ocaml _ pattern and list literals are either inescapably ambiguous, or require rewritings that require knowledge of grammars (which we're trying to avoid)
-- funccall in lua requires splitting out the argument list, to ensure correct recursion (the call must have high precedence, but the argument list must reach for top level expressions)
-- binding expressibility has thus far been sufficient, nothing I've wanted to express has been impossible.
-- defAround allows for recursive definitions, which will be incorrect for most/many languages, but there is nothing that preserves that abstraction
+% - The efun builtin is unsound, but something like it is required to implement some of the things when each sub-construction is atomic
+% - fix seems reasonable
+% - callcc probably reasonable, but probably not necessary to have the full support, instead basically have it be a block that you can break out of by calling a function. Not entirely sure if that can be represented in a sound way with the current system
+% - ocaml _ pattern and list literals are either inescapably ambiguous, or require rewritings that require knowledge of grammars (which we're trying to avoid)
+% - funccall in lua requires splitting out the argument list, to ensure correct recursion (the call must have high precedence, but the argument list must reach for top level expressions)
+% - binding expressibility has thus far been sufficient, nothing I've wanted to express has been impossible.
+% - defAround allows for recursive definitions, which will be incorrect for most/many languages, but there is nothing that preserves that abstraction
 
-- (current) absence of checking probably means that at least one implementation is incorrect, only working because the implemented languages are sane when they introduce names. I suspect the general case, when any syntax type can bind in any way, is broken.
+% - (current) absence of checking probably means that at least one implementation is incorrect, only working because the implemented languages are sane when they introduce names. I suspect the general case, when any syntax type can bind in any way, is broken.
 
-\section{A Functional Language} \label{sec:functional-eval}
+\subsection{A Functional Language - OCaml Subset} \label{sec:functional-eval}
 
 % TODO: ref ocaml
 The functional language implemented here is a subset of OCaml, with a focus on supporting pattern matching. This section will not examine the entirety of the language definition, most syntax constructions used are fairly simple and rote, focus will instead be placed on the implementation of patterns and pattern matching, as well as additional difficult to express particulars of the language. The full language description can be found in Appendix~\ref{sec:appendix-ocaml}.
 
-\subsection{Patterns and Pattern Matching}
-
-% TODO: this should probably be split out rather a lot, between evaluation, results and discussion. First for "this will be done", second for "this is how it was done", third for "these things were good, these were bad" and possibly "this is how it might be done better".
+\subsubsection{Patterns and Pattern Matching} \label{sec:functional-pattern-matching}
 
 % TODO: ensure that there is proper description of what a syntax type is supposed to be, i.e. something a user might know about, such as expression, statement, pattern, etc.
 
@@ -596,10 +865,14 @@ Pattern matching is a feature found in most functional languages, allowing the p
 \begin{listing}[ht]
 \begin{minted}{ocaml}
 let result = match [[4]] with
-  | [[a], b] -> print_string "a is int, b is list of int, both bound"
-  | _ :: _ :: _ -> print_string "nothing bound, at least two elements in list"
-  | [[4]] -> print_string "nothing bound"
-  | _ -> print_string "nothing else matched"
+  | [[a], b] ->
+    print_string "a:int, b:int list, both bound"
+  | _ :: _ :: _ ->
+    print_string "nothing bound, length >= 2"
+  | [[4]] ->
+    print_string "nothing bound"
+  | _ ->
+    print_string "nothing else matched"
 \end{minted}
 \caption{Example match expression in OCaml}
 \label{lst:ocaml-match-example}
@@ -608,7 +881,10 @@ let result = match [[4]] with
 The above suggests a fairly clear formulation of the syntax and bindings of the match expression using syntax constructions.
 
 \begin{minted}{text}
-syntax match:Expression = "match" e:Expression "with" arm:("|" p:Pattern "->" body:Expression)+ {
+syntax match:Expression =
+  "match" e:Expression "with"
+  arm:("|" p:Pattern "->" body:Expression)+
+{
   #scope arm:(p body)
   #scope (e)
   <...>
@@ -618,20 +894,20 @@ syntax match:Expression = "match" e:Expression "with" arm:("|" p:Pattern "->" bo
 Patterns expose their bound names using \mintinline{text}{#bind x after} and each match arm introduces a new scope containing its pattern and expression. The patterns themselves are also simple to express in terms of syntax and bindings:
 
 \begin{minted}{text}
-syntax wildcardPat:Pattern = "_" {
+syntax wildcardPattern:Pattern = "_" {
   <...>
 }
 
-syntax bindPat:Pattern = id:Identifier {
+syntax bindPattern:Pattern = id:Identifier {
   #bind id after
   <...>
 }
 
-syntax intLitPat:Pattern = i:Integer {
+syntax integerLiteralPattern:Pattern = i:Integer {
   <...>
 }
 
-syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
+syntax consPattern:Pattern = head:Pattern ":" ":" tail:Pattern {
   #assoc right
   #prec 10
   <...>
@@ -640,7 +916,7 @@ syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
 
 % TODO: this needs to refer to some more thorough description / discussion of the lexer and its choices
 
-The slightly peculiar syntax description for the cons pattern is due to the lexer used, a single colon is always parsed as a single symbol, and each syntax literal in the description must be a single token. Implementing each of these is where problems arise; each pattern must do two things:
+The slightly peculiar syntax description for the cons pattern is due to the lexer used, a single colon is always parsed as a single symbol, and each syntax literal in the description must be a single token (see Section~\ref{sec:design-syntax}). Implementing each of these is where problems arise; each pattern must do two things:
 
 \begin{itemize}
   \item Check a value provided by the enclosing pattern or match expression. The result of this check must be usable to change control flow.
@@ -656,23 +932,27 @@ The implementation in this thesis thus uses functions that do not introduce a ne
 A pattern then becomes essentially a function taking a function to call if the match fails and a value to match against. Implementation becomes as follows:
 
 \begin{minted}{text}
-syntax wildcardPat:Pattern = "_" {
-  BExpression` efun fail. efun value. #unit
+syntax wildcardPattern:Pattern = "_" {
+  BExpression` efun fail. efun value.
+    #unit
 }
 
-syntax bindPat:Pattern = id:Identifier {
+syntax bindPattern:Pattern = id:Identifier {
   #bind id after
-  BExpression` efun fail. efun value. defAfter `id(id) = value
+  BExpression` efun fail. efun value.
+    defAfter `id(id) = value
 }
 
-syntax intLitPat:Pattern = i:Integer {
+syntax integerLiteralPattern:Pattern = i:Integer {
   BExpression` efun fail. efun value.
     #if (#equal value `int(i))
       (fun _. #unit)
       (fun _. fail #unit)
 }
 
-syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
+syntax consPattern:Pattern =
+  head:Pattern ":" ":" tail:Pattern
+{
   #assoc right
   #prec 10
   BExpression` efun fail. efun value.
@@ -686,17 +966,118 @@ syntax consPat:Pattern = head:Pattern ":" ":" tail:Pattern {
 }
 \end{minted}
 
-The pattern implementing matching against a list literal (\mintinline{ocaml}{[a, b]} as opposed to \mintinline{ocaml}{a :: b :: []}) is a straightforward extension of the cons pattern.
+The pattern implementing matching against a list literal (i.e. \mintinline{ocaml}{[a, b]} as opposed to \mintinline{ocaml}{a :: b :: []}) is a straightforward extension of the cons pattern.
+
+Continuing, the implementation of \mintinline{ocaml}{match}, while not trivial, is a relatively straightforward composition of its match arms. For each arm, give the pattern the value to check, and a function to call to skip to checking the next arm in case the pattern fails, then evaluate the body and return the result. The implementation uses \mintinline{text}{callcc} to make an abortable function: \mintinline{text}{#callcc (fun abort. body)} evaluates to one of two things: the argument provided to \mintinline{text}{abort}, or the result of evaluating \mintinline{text}{body} if \mintinline{text}{abort} is never called.
+
+\begin{minted}{text}
+syntax match:Expression =
+  "match" e:Expression "with"
+  arm:("|" p:Pattern "->" body:Expression)+
+{
+  #scope arm:(p body)
+  #scope (e)
+  #prec 1
+  BExpression` #callcc (fun end. (fun val.
+    `t(foldr arm prev
+         (BExpression`
+           #callcc (fun next.
+             (`t(p) next val;
+              end `t(body)));
+           `t(prev))
+       (BExpression` #crash)))
+    `t(e))
+}
+\end{minted}
+
+Note that the implementation is somewhat naive, for example no work is shared between the arms, even if there is overlap in the patterns, and there are no warnings for overlapping patterns or incomplete coverage.
 
 % TODO: not neutral, not objective
 The inability to express patterns in syntax constructions without the presence of an unsound construction in the core language signals a clear flaw in the method. The syntax descriptions and binding specifications on the other hand are clear and concise and may be considered a success.
 
-\subsection{Lists and Ambiguous Syntax}
+Patterns are however not limited only to the \mintinline{ocaml}{match} expression in OCaml, they can additionally be used in function definitions. The most common way of writing such a function uses \mintinline{ocaml}{let} with some syntax sugar to allow writing all the arguments next to the function name, instead of as part of nested \mintinline{ocaml}{fun} expressions. The two definitions below are equivalent, and we would like our OCaml subset to support both.
+
+\begin{minted}{ocaml}
+let add a b = a + b
+let add = fun a -> fun b -> a + b
+\end{minted}
+
+As an informal description of this feature, the identifier being bound in a \mintinline{ocaml}{let} expression can be followed by any number of parameters (patterns), in which case the value being bound should be a curried function with those parameters. The syntax construction \mintinline{text}{topLet} below expresses this.
+
+\begin{minted}{text}
+syntax topLet:Top =
+  "let" x:Identifier args:Pattern*
+  "=" e:Expression (";" ";")?
+{
+  #bind x after
+  #scope (args (e))
+  BExpression` defAfter `id(x) = `t(
+    foldr args next
+      (BExpression` fun x.
+        (`t(args) (fun _. #crash) x;
+         `t(next)))
+    e)
+}
+\end{minted}
+
+Using \mintinline{text}{topLet} to expand the previous definition of \mintinline{ocaml}{add} we obtain a syntax tree essentially equivalent to the following:
+
+\begin{minted}{text}
+defAfter add =
+  (fun x. <a> (fun _. #crash) x;
+    (fun x. <b> (fun _. #crash) x;
+      #plus a b))
+\end{minted}
+
+where \mintinline{text}{<a>} and \mintinline{text}{<b>} are placeholders for the expansions of the patterns used for the two arguments. In this particular case both will be \mintinline{text}{efun}s ignoring their first argument and using \mintinline{text}{defAfter} to expose their second argument. This works, and will work for all sensible pattern we might define for OCaml, but there is a problem. Consider the following two patterns (their expansion is unimportant for the current discussion and thus elided):
+
+\begin{minted}{text}
+syntax equalPattern:Pattern =
+  "=" "(" e:Expression ")"
+{
+  #scope (e)
+  <...>
+}
+
+syntax aroundPattern:Pattern =
+  id:Identifier
+{
+  #bind id before
+  #bind id after
+  <...>
+}
+\end{minted}
+
+\mintinline{text}{equalPattern} evaluates an expression and compares for equality, while \mintinline{text}{aroundPattern} is the same as \mintinline{text}{bindPattern} except it binds before as well as after. \mintinline{text}{aroundPattern} is the real problem, but we need \mintinline{text}{equalPattern} to expose it. Conceptually \mintinline{ocaml}{foo} below returns \mintinline{ocaml}{true} if its arguments are equal and produces an error otherwise.
+
+\begin{minted}{ocaml}
+let foo =(a) a = true
+\end{minted}
+
+This is not what happens however, instead an error is introduced during expansion. The expansion below once again uses \mintinline{text}{<a>} and \mintinline{text}{<b>} as placeholders for the expansions of \mintinline{text}{=(a)} and \mintinline{text}{a} respectively. We know that \mintinline{text}{<a>} refers to \mintinline{text}{a}, and that \mintinline{text}{<b>} binds this \mintinline{text}{a} using \mintinline{text}{#bind a before} and \mintinline{text}{#bind a after}. But \mintinline{text}{<a>} below cannot refer to anything defined by \mintinline{text}{<b>}; the latter is enclosed in a function, which introduces a scope and limits the availability of bound names.
+
+\begin{minted}{text}
+defAfter foo =
+  (fun x. <a> (fun _. #crash) x;
+    (fun x. <b> (fun _. #crash) x;
+      undefined))
+\end{minted}
+
+Expansion checking detects this and rejects the expansion specification, preventing an error from being introduced after expansion has started. The problem is that all patterns in OCaml only bind names after themselves, thus this expansion is fine for all cases we are interested in, but since anyone could add a new pattern that works differently we must handle such cases as well.
+
+There are two plausible ways around this, neither of which is supported by syntax constructions at present.
+\begin{itemize}
+  \item Make a more flexible scope declaration. If \mintinline{text}{topLet} had a scope declaration along the lines of \mintinline{text}{(args1 (args2 (args3(... (e)))))}, i.e. a new scope is introduced after each argument, disallowing previous patterns from referencing names bound in later patterns, properly reflecting the semantics of the expansion.
+
+  \item Limit syntax constructions of syntax type \mintinline{text}{Pattern} to only allow binding after, capturing our intuition of how patterns in OCaml are supposed to work in the actual patterns rather than in syntax constructions that use them.
+\end{itemize}
+
+\subsubsection{Lists and Ambiguous Syntax} \label{sec:ambiguous-lists}
 
 A list literal in OCaml is a list of semi-colon separated expressions, enclosed in square brackets. The syntax description of a corresponding syntax construction is straight-forward and can be seen below:
 
 \begin{minted}{text}
-syntax listLit:Expression =
+syntax listLiteral:Expression =
   "[" (e:Expression (";" es:Expression)*)? "]"
 {
   <...>
@@ -706,7 +1087,7 @@ syntax listLit:Expression =
 However, OCaml additionally supports sequential composition of expressions in the form of an operator, semi-colon. This syntax construction is also straight forward:
 
 \begin{minted}{text}
-syntax seqComp:Expression =
+syntax sequentialComposition:Expression =
   e1:Expression ";" e2:Expression
 {
   #assoc right
@@ -723,7 +1104,7 @@ Syntax constructions can implement this, but not in a convenient fashion. If we 
 \begin{minted}{text}
 syntax type Statement = Expression
 
-syntax seqComp:Statement =
+syntax sequentialComposition:Statement =
   e1:Statement ";" e2:Statement
 {
   #assoc right
@@ -736,16 +1117,663 @@ syntax normalExpression:Statement = e:Expression {
 }
 \end{minted}
 
-\section{An Imperative Language} \label{sec:imperative-eval}
+\subsection{An Imperative Language - Lua Subset} \label{sec:imperative-eval}
 
 The imperative language implemented to test the expressiveness of syntax constructions is a subset of Lua. % TODO: ref lua
-Tables and global variables, arguably the more unique aspects of the language, are not implemented, instead the focus lies on implementing control flow common in imperative languages. The ones implemented here are loops, \mintinline{text}{break} and \mintinline{text}{return}.
+The purpose is to evaluate expressibility of common control flow constructs present in imperative languages, as such tables and global variable, arguably the more unique aspects of the language, are not implemented. The control flow constructs here implemented are loops, \mintinline{text}{break} and \mintinline{text}{return}.
 
-\chapter{Results and Discussion}
+\subsubsection{Loops and Break} \label{sec:lua-loops-and-break}
 
-\section{Results}
+A loop in an imperative language will evaluate its body for side effects, possibly multiple times, for as long as some condition holds. In addition certain statements exist to alter the normal control flow of a loop; in the case of Lua this is limited to the \mintinline{lua}{break} statement, but other languages may contain statements such as \mintinline{java}{continue} or \mintinline{perl}{redo} and \mintinline{perl}{next}.
 
-\section{Discussion}
+This section details the implementation of a \mintinline{lua}{while} loop and the \mintinline{lua}{break} statement.
+
+Starting with the \mintinline{lua}{while} loop, the implementation is relatively straightforward. The condition check and body is expanded into a function that recursively calls itself to perform another condition check and iteration. The recursion is performed using the fixpoint operator \mintinline{text}{#fix}.
+
+\begin{minted}{text}
+syntax while:Statement =
+  "while" cond:Expression "do"
+  body:Block "end"
+{
+  BExpression` #fix (fun repeat. fun _.
+    #if (#deref `t(cond))
+      (fun _.
+        (`t(body);
+         repeat #unit))
+      (fun _. #unit))
+}
+
+syntax type Block = Statement
+
+syntax blockContent:Block =
+  (stmnt:Statement ";"?)* ret:Terminator?
+{
+  #scope (stmnts ret)
+  foldr stmnt next
+    (BExpression` `t(stmnt); `t(next))
+  foldr ret _
+    (BExpression` `t(ret))
+  (BExpression` #unit)
+}
+
+syntax type Terminator = Statement
+
+syntax break:Terminator = "break" {
+  <...>
+}
+\end{minted}
+
+Note that the body has syntax type \mintinline{text}{Block} as opposed to the more intuitive \mintinline{text}{Statement+}. This is due to a peculiarity of the Lua syntax, a block is a list of statements optionally terminated by a break or return statement, which is also the only place where a break or return statement is legal. Since the block structure appears in multiple constructs beside \mintinline{lua}{while} loops, e.g. \mintinline{lua}{function}s and \mintinline{lua}{if} statements, this formulation reduces code duplication.
+
+Continuing with the implementation of the \mintinline{lua}{break} statement we run into some issues. \mintinline{lua}{break} should transfer control flow past the end of the enclosing loop, regardless of the form of said loop, e.g. it should not matter if it is a \mintinline{lua}{while} or \mintinline{lua}{for} loop. This can be done by making all the loops construct an abort function using \mintinline{text}{callcc}, but then this function has to be provided to the \mintinline{lua}{break} statement somehow.
+
+One solution is to have \mintinline{lua}{break} expand to a function taking the abort function as an argument. However, \mintinline{lua}{break} may appear inside some nested statement of the loop body, thus each statement of the body must also be supplied this function, in case it contains a \mintinline{lua}{break}. The code below shows this implementation, threading the abort function through all the statements, but also contains an error:
+
+\begin{minted}{text}
+syntax while:Statement =
+  "while" cond:Expression "do"
+  body:Block "end"
+{
+  BExpression` fun _. #callcc (fun break.
+    #fix (fun repeat. fun _.
+      #if (#deref `t(cond))
+        (fun _.
+          (`t(body) break;
+           repeat #unit))
+        (fun _. #unit)))
+}
+
+syntax type Block = Statement
+
+syntax blockContent:Block =
+  (stmnt:Statement ";"?)* ret:Terminator?
+{
+  #scope (stmnts ret)
+  BExpression` fun break.
+  `t(foldr stmnt next
+       (BExpression` `t(stmnt) break; `t(next))
+     foldr ret _
+       (BExpression` `t(ret) break)
+     (BExpression` #unit))
+}
+
+syntax type Terminator = Statement
+
+syntax break:Terminator = "break" {
+  BExpression` fun break. break #unit
+}
+
+syntax local:Statement =
+  "local" x:Identifier ("=" e:Expression)?
+{
+  #bind x after
+  BExpression` fun _.
+    defAfter `id(x) = #ref
+      (#deref `t(foldr e _ (e) (BExpression` #unit)))
+}
+\end{minted}
+
+The error is found in the expansion of \mintinline{text}{local}. In Lua \mintinline{lua}{local} introduces a local variable for the rest of the current scope, which is here specified by \mintinline{text}{#bind x after}, but the expansion does not honor this. \mintinline{text}{defAfter} is wrapped in a function, which introduces a scope, thus limiting the visibility of \mintinline{text}{x} to the body of said function, thus it will not be bound after.
+
+\mintinline{lua}{break} must be enclosed in a function to receive the abort function, but \mintinline{lua}{local} must not be enclosed in a function, otherwise it cannot expose its binding. A syntax construction has a very limited set of actions it can perform in regards to its child nodes during expansion (moving, removing and duplicating) and thus cannot distinguish between a statement that needs the abort function (e.g. \mintinline{lua}{break} and \mintinline{lua}{if}) and cannot be wrapped in a function (e.g. \mintinline{lua}{local} and \mintinline{lua}{function}) lest its binding is hidden.
+
+The actual implementation instead uses functions that do not introduce a new scope, the expression functions introduced in Section~\ref{sec:core-language} and discussed further in Section~\ref{sec:efun-drawbacks}. Replacing the outermost enclosing \mintinline{text}{fun} in each of the syntax constructions above with \mintinline{text}{efun} resolves the error and produces a correct implementation.
+
+% TODO: at the corresponding place in ocaml I say that the necessity of efuns is a really bad thing, but it feels redundant to say that here. Unsure of how much I should repeat here from that section.
+
+\subsubsection{Functions and Return}
+
+A return statement in an imperative language returns control flow to the caller of a function, optionally providing a return value. Reaching the end of a function without encountering a return statement also returns control flow and is equivalent to a return statement without a return value. Listing~\ref{lst:lua-function-example} demonstrates a simple function with a single return.
+
+% TODO: possibly implement "a, b = b, a" assignments, since they are rather more idiomatic
+\begin{listing}
+\begin{minted}{lua}
+function fibonacci(n)
+  local prev = 0
+  local curr = 1
+  local temp
+  for i = 1, n-1 do
+    temp = b
+    b = a + b
+    a = temp
+  end
+  return curr
+end
+\end{minted}
+\caption{An example in Lua demonstrating a simple function}
+\label{lst:lua-function-example}
+\end{listing}
+
+In the case of nested functions a return statement should only return from the inner-most function. The syntax of a return statement is trivial to describe and can be seen below.
+
+\begin{minted}{text}
+syntax return:Statement = "return" value:Expression? {
+  <...>
+}
+\end{minted}
+
+The implementation is rather less obvious. The return statement must transfer control flow to a point external to itself, namely to the caller of the enclosing function. However, the situation is rather similar to the \mintinline{lua}{break} statement (see Section~\ref{sec:lua-loops-and-break}), so we employ a similar solution: a function declaration introduces an abort function via \mintinline{text}{#callcc} and threads it to all statements via expression functions.
+
+\begin{minted}{text}
+syntax function:Statement =
+  "function" f:Identifier
+  "(" (a:Identifier ("," as:Identifier)*)? ")"
+  body:Block "end"
+{
+  #bind f before
+  #bind f after
+  #bind f, a, as in body
+  BExpression` efun _. efun _.
+    (defAround `id(f) = #fix (fun recur.
+      (defAfter `id(f) = recur;
+       `t(foldr a next
+            (BExpression` fun `id(a). `t(next))
+          foldr as next
+            (BExpression` fun `id(as). `t(next))
+          (BExpression` fun _. #callcc (fun return.
+            `t(body) return (fun _. #crash)))))))
+}
+
+syntax return:Return = "return" e:Expression? {
+  BExpression` efun return. efun break. `t(
+    foldr e _
+      (BExpression` return (#deref `t(e)))
+    (BExpression` return #unit))
+}
+\end{minted}
+
+Note that this change adds yet another wrapping \mintinline{text}{efun} around all statements, whether it should affect them directly or not. Syntax construction partially does not support this kind of lexical dependence, and the workaround used here requires a large amount of boilerplate to support it.
+% TODO: this doesn't feel like a conclusion of the thing
+
+\subsubsection{Function Calls and Precedence} \label{sec:lua-func-call-precedence}
+
+A function call in Lua appears syntactically as an expression evaluating to a function followed by an argument list within parenthesis, while the core language only has single argument functions and uses juxtaposition as application. The translation between the two is straightforward and is as follows:
+
+\begin{minted}{text}
+syntax funcCall:Expression =
+  f:Expression "(" (e:Expression ("," es:Expression)*)? ")"
+{
+  BExpression` `t(
+    foldl es prev
+      (BExpression` (#deref `t(prev)) `t(es))
+    foldl e prev
+      (BExpression` (#deref `t(prev)) `t(e))
+    f)
+    #unit
+}
+\end{minted}
+
+The final \mintinline{text}{#unit} being applied is to allow calling a function that takes no arguments. Compare with the definition of \mintinline{lua}{function} in the previous section. % TODO: reference without an explicit label reference
+
+This definition produces an ambiguous grammar, e.g., \mintinline{lua}{1 + f()} has two allowable parses: \mintinline{lua}{(1 + f)()} and \mintinline{lua}{1 + (f())}. The solution takes the form of precedence, give a function call higher precedence than arithmetic. This solves the ambiguity, but presents a new problem: \mintinline{lua}{f(1 + 2)} is no longer parsed correctly.
+
+The issue stems from how precisely precedence affects allowable parses. Whenever a syntax construction recursively uses its own syntax type (i.e. \mintinline{text}{funcCall}, being an \mintinline{text}{Expression}, using \mintinline{text}{Expression} in the syntax description) those recursive uses may only contain syntax constructions of the same, higher, or undefined precedence. Since addition has lower precedence it is disallowed both in the function being called and in the argument list. The latter is undesired.
+
+This can be solved by an extra layer of indirection. If the argument list is broken out into a separate syntax construction with a different syntax type it's uses of \mintinline{text}{Expression} will be entirely unconstrained.
+
+The correct solution then becomes as follows:
+
+\begin{minted}{text}
+syntax funcCall:Expression =
+  f:Expression "(" args:ArgList ")"
+{
+  #prec 15
+  BExpression` `t(args) `t(f) #unit
+}
+
+syntax argList:ArgList =
+  (e:Expression ("," es:Expression)*)?
+{
+  BExpression` fun f. `t(
+    foldl es prev
+      (BExpression` (#deref `t(prev)) `t(es))
+    foldl e prev
+      (BExpression` (#deref `t(prev)) `t(e))
+    (BExpression` f))
+}
+\end{minted}
+
+This seems clearly undesirable, assigning precedence affects more things than intended and rectifying the problem requires introducing a new syntax type that we most likely would not have wanted otherwise.
+
+\subsection{Smaller self-contained examples}
+
+\subsubsection{Variables in different domains}
+
+% TODO: domains is probably not the right word here?
+
+Many programming languages have bindings that are split in different domains, the most common example probably being a split between values and types. For example, Listing~\ref{lst:haskell-data-constructor-not-in-scope} shows the result of attempting to use an identifier representing a type in a value position: an unbound error. This despite the same identifier being used on the very next line, thus clearly being bound. The definitions end up in different domains where they neither conflict nor interact.
+
+\begin{listing}[h]
+\begin{minted}{haskell}
+data T = V
+err1 = T -- Not in scope: data constructor ‘T’
+ok = V :: T
+
+err2 = case V of
+  U -> "U" -- Not in scope: data constructor ‘U’
+  u -> "u"
+\end{minted}
+\caption{Identifiers in Haskell are interpreted differently depending on their syntactical position, as well as the characters in their symbols.}
+\label{lst:haskell-data-constructor-not-in-scope}
+\end{listing}
+
+Additionally the patterns on the last two lines contain unbound identifiers, but the semantics differ based on the casing of the characters in their symbols. The first of the two matches against a data constructor (the domain was selected by the contents of the symbol), which must be bound, thus an error is produced, while the second binds \mintinline{text}{u} to the value of whatever is being matched.
+
+Syntax constructions have only a single domain of bindings, and does not allow differentiating identifiers based on the form of their symbols, and can thus not express the above at all.
+
+\subsubsection{Prolog pattern matching}
+
+Section~\ref{sec:functional-pattern-matching} evaluates the formulation of a pattern matching system using syntax construction. However, the system implemented only needs to support the capabilities of OCaml, but other languages have pattern matching with more features. For example, Prolog allows matching an unbound variable twice in a pattern, with the semantic meaning of requiring the values at both positions to be equal. Listing~\ref{lst:prolog-absolute} shows a simple example.
+
+\begin{listing}[h]
+\begin{minted}{prolog}
+abs(A, B) :- A < 0, B is -A.
+abs(A, A) :- A >= 0.
+\end{minted}
+\caption{Prolog rule stating the conditions for the second value being the absolute value of the first.}
+\label{lst:prolog-absolute}
+\end{listing}
+
+An implementation of the syntax and binding semantics of this in syntax constructions might look as follows:
+
+\begin{minted}{text}
+syntax variableBinding:Pattern = id:Identifier {
+  #bind id after
+  <...>
+}
+syntax equalityPattern:Pattern = id:Identifier {
+  <...>
+}
+\end{minted}
+
+The first syntax construction binds the result of the pattern match, similarly to the pattern matching system in Section~\ref{sec:functional-pattern-matching}. The second has no \mintinline{text}{#bind id after} statement and thus requires \mintinline{text}{id} to be bound by the environment. If we disallow shadowing these syntax constructions are mutually exclusive; if the symbol is already bound we cannot bind it again without a redefinition error and we must choose \mintinline{text}{equalityPattern}, if it is unbound we cannot find that it refers to anything and we must choose \mintinline{text}{variableBinding}.
+
+If we allow shadowing of bindings from an outer scope both syntax constructions will be valid in some cases, namely when the symbol is bound in an outer scope. In this case we could shadow it and choose \mintinline{text}{variableBinding}, or refer to the pre-existing binding and choose \mintinline{text}{equalityPattern}.
+
+Syntax constructions allow shadowing of definitions from an outer scope, thus the above would not be guaranteed to be unambiguous. Furthermore, due to the way parsing is implemented the above would double the number of parse trees for every occurrence of an identifier in a pattern, which in a normal Prolog program would result in a very large number of parse trees. In the interest of performance the current implementation therefore requires all disambiguation to be done syntactically, thus this form of pattern matching could not be expressed at all.
+
+\subsubsection{Strange binding order}
+
+\subsubsection{Namespaces and Modules}
+
+Most programming languages have some concept of namespacing and / or modules, ways to split code into components and then use importing and exporting to connect them. Syntax constructions have no concept of this as of yet, all bindings are resolved in a single file only. This makes most programming languages impossible to implement in full, with a notable exception of C: a syntax construction based implementation of C could run after the C preprocessor with the correct binding semantics.
+
+% TODO: probably more discussion on this? on ways to solve it?
+
+\section{Language Composition}
+
+\subsection{Pattern Matching in Lua}
+
+Lua does not normally have pattern matching or destructuring, but the implementation of OCaml in Section~\ref{sec:functional-eval} contains such features, so it seems wasteful to not use them. This section details adding destructuring to pre-existing constructions that introduce bindings, as well as attempting to reuse the \mintinline{ocaml}{match} expression.
+
+We start off by adding destructuring to a \mintinline{lua}{local} binding. The \mintinline{lua}{local} syntax construction is originally implemented as follows:
+
+\begin{minted}{text}
+syntax local:Statement =
+  "local" x:Identifier ("=" e:Expression)?
+{
+  #bind x after
+  #scope (e)
+  BExpression` efun _. efun _.
+    defAfter `id(x) = #ref
+      (#deref `t(foldr e _ (e) (BExpression` #unit)))
+}
+\end{minted}
+
+Importing all the \mintinline{text}{Pattern}s from OCaml, replacing \mintinline{text}{Identifier} with \mintinline{text}{Pattern}, and making the corresponding change in the expansion yields the following implementation:
+
+\begin{minted}{text}
+syntax local:Statement =
+  "local" x:Pattern ("=" e:Expression)?
+{
+  #scope (e)
+  BExpression` efun _. efun _.
+    `t(x) (fun _. #crash)
+      (#ref (#deref `t(foldr e _ (e) (BExpression` #unit))))
+}
+\end{minted}
+
+The semantics of the resulting syntax constructions are essentially as expected, patterns can be used to destructure the value and introduce new bindings. However, a \mintinline{lua}{local} binding can be mutated, which is here implemented by introducing a reference to a value, as opposed to purely the value itself. As such, any pattern that assumes a non-reference value will fail. This stems from a mismatch between the underlying core language and Lua; the core language is explicit about what is a reference and what is not, while Lua will frequently produce references and implicitly dereferences them when required. OCaml, which these patterns were written for, is more in line with the core language and performs no implicit dereference.
+
+We can alleviate this mismatch somewhat by allowing the \mintinline{lua}{local} construct to attempt the pattern both with and without dereferencing. This essentially adds auto-dereferencing to the pattern match, but only for non-nested cases. A pattern appearing somewhere within another pattern will not auto-dereference, so to handle this case we introduce a new pattern, \mintinline{text}{derefPattern}, to explicitly match against a reference.
+
+\begin{minted}{text}
+syntax local:Statement =
+  "local" x:Pattern ("=" e:Expression)?
+{
+  #scope (e)
+  BExpression` efun _. efun _.
+    (fun expr. #callcc (fun done.
+      (#callcc (fun fail. `t(x) fail expr);
+       `t(x) (fun _. #crash) (#deref expr))))
+    (#ref (#deref `t(foldr e _ (e) (BExpression` #unit))))
+}
+syntax derefPattern:Pattern =
+  "ref" p:Pattern
+{
+  BExpression` efun fail. efun value.
+    `t(p) fail (#deref value)
+}
+\end{minted}
+
+The remaining binding constructions in Lua (e.g. functions and for loops) can be changed in similar ways to support destructuring. Patterns in function arguments exhibit the same issues here as they do in OCaml, see the end of Section~\ref{sec:functional-pattern-matching}, but otherwise work as expected. We have thus reused patterns from OCaml without needing to change them, only requiring changes to the parts of Lua that should use the patterns.
+
+However, patterns can do more than simple destructuring, OCaml additionally has a \mintinline{ocaml}{match} construct that enables conditional execution based on which pattern matches a given value. Reusing this construct in Lua turns out to be problematic however, for a few reasons:
+
+\begin{itemize}
+\item First, OCaml consists largely of expressions while Lua makes a distinction between statements and expressions. As such, \mintinline{ocaml}{match} is an expression. In OCaml it makes sense to have a control flow construct as an expression, but in Lua most computation requires statements, thus we likely want \mintinline{ocaml}{match} to be a statement.
+
+\item Second, we may consider that in a real world scenario the two languages would likely have been developed entirely independent of each other, i.e. the syntax type \mintinline{text}{Expression} of OCaml is distinct from the syntax type \mintinline{text}{Expression} of Lua.
+
+\item Third, we only wish to bring in \mintinline{ocaml}{match}, not the entirety of OCaml; it should be possible to write Lua in each of the branches, not OCaml.
+
+\item Fourth, the syntax of OCaml differs significantly from Lua. What is natural in one may very well not be in the other.
+\end{itemize}
+
+As such we have a few options for how to integrate \mintinline{ocaml}{match}. Broadly speaking, these options can be split in two groups: explicitly exposing the \mintinline{ocaml}{match} from OCaml, and creating a new syntax construction that expands into a \mintinline{ocaml}{match}, without exposing it.
+
+The former approach immediately runs into problems because of the second point above. To write \mintinline{ocaml}{match} as a statement we require a syntax construction of syntax type \mintinline{text}{Statement} consisting of a sole OCaml \mintinline{text}{Expression}, a form of bridging syntax construction. Additionally, to write a Lua statement inside a \mintinline{ocaml}{match} branch we require a bridge in the opposite direction. The combination of these two syntax constructions produce an ambiguous grammar however; they can nest any number of times when parsing a statement.
+
+In general, this problem will appear any time we wish to include a syntax construction that is recursive, i.e. that uses its own syntax type in the syntax description. % TODO: mention something about how to solve long term
+
+The alternative reuse option is to create a new syntax construction that expands into a \mintinline{ocaml}{match}.
+% TODO: continue
+
+\section{Correctness and Performance}
+
+Syntax constructions provide no semantics or specification of a core language, thus the choice of core language and a means to run programs in it are largely irrelevant to this thesis. However, we wish to know that the languages defined using syntax constructions have the correct semantics. As such, the syntax construction implementation contains a simple interpreter for the eager, largely functional core language briefly described in Section~\ref{sec:core-language}.
+
+A few programs, written in OCaml and Lua respectively, then form a sort of correctness test suite: if a program executes without any errors in the original implementation, and the syntax construction implementation can parse it, then the results should be the same no matter which of the two is used. The former requirements stems largely from the absence of type checking in syntax constructions, and the latter ensures that the program is part of the defined language subset.
+
+The testing is made slightly more complicated by syntax constructions not supporting importing. Program correctness is checked by comparing printed output, but printing functions tend to be defined externally, via some form of library, standard or otherwise. To smooth over this difference the actual programs tested are slightly different for the original implementations and the syntax construction implementations; they each contain a small prelude that define the same printing functions, but using different underlying mechanisms. Aside from this difference the programs tested are identical.
+
+The test programs implement functions for calculating Fibonacci numbers with the quadratic recursive definition as well as the linear version, and two versions of FizzBuzz. The programs use all syntax constructions at least once between them with the exception of list related constructions in OCaml.
+
+\subsection{Performance} \label{sec:performance}
+
+The performance of a tool has a large impact on the practicality of using it regularly, thus a few words will here be spent on such issues. Because of the various issues apparent and described throughout the evaluation this section will not be particularly thorough however; if a tool is a poor choice for capability reasons its performance matters little.
+
+In practice all the sub-components of the implementation have been fast enough to not incur any noticeable delay for any of the programs tested, with one very notable exception: the expansion phase is slow.
+
+The slowness of expansion is not an inherent property of the method, but rather a consequence of the simplest possible implementation. Expansion of a syntax construction assumes that each symbol exists at most once in binding position (see Section~\ref{sec:expansion-checking} for more information), and name resolution uses gensyms and renaming to ensure this to be true. Any expansion may duplicate one of its sub nodes however, which might produce a tree that has the same symbol in binding position multiple times.
+
+Thus we reach the conclusion that we may need to perform name resolution after an expansion, to replace the duplicated binding symbols with distinct symbols. If the bindings use \mintinline{text}{#bind x in} then the affected symbols are confined to sub nodes of the expanded syntax construction, but if they use \mintinline{text}{#bind x before} or \mintinline{text}{#bind x after} no such guarantee exists. The affected symbols may be arbitrarily far away in the abstract syntax tree, as long as they reside in the same scope, or one of its child scopes.
+
+The naive implementation of expansion then expands a single syntax construction, then runs name resolution on the entire abstract syntax tree to ensure the invariant holds, then repeats until no more syntax constructions can be expanded.
+
+Most syntax constructions do not duplicate its sub nodes however, they are generally used at most once, in which case the extra name resolution pass is unnecessary. In fact, none of the syntax constructions used to implement the OCaml and Lua subsets use a sub node more than once, thus the amount of unnecessary work performed is significant.
+
+As for the remaining parts of the implementation, parsing requires an algorithm that can parse any context free grammar and produce all syntax trees in case of ambiguities. The current implementation uses an off-the-shelf implementation of the Earley parsing algorithm. (Todo: ref to library and time complexity analysis?). The algorithms used for grammar generation, expansion checking, expansion, and name resolution have not been examined to determine time complexity, but have in practice had negligible impact on the run time of the implementation.
+
+To summarize, the run time of the current implementation is dominated, by several orders of magnitude, by the expansion phase, which in the common case can be greatly optimized.
+
+\section{Error Reporting}
+
+\subsection{Ambiguous Source Code} \label{sec:errors-ambiguous}
+
+Syntax constructions provide no guarantee that a composed language has an unambiguous grammar. As such a user may write code that cannot be parsed unambiguously. At that point the user must be presented with a helpful error that can assist with solving the problem, without deep knowledge of the internals of the particular language, nor of grammars and parsing in general.
+
+The error message should quickly direct the user to the actually ambiguous part of the code, and ideally also present what to change to select one of the possible interpretations.
+
+\begin{listing}[h]
+\begin{minted}{text}
+syntax binaryAnd:Expression =
+  a:Expression "&" b:Expression
+{ <...> }
+syntax binaryOr:Expression =
+  a:Expression "|" b:Expression
+{ <...> }
+syntax variable:Expresison =
+  id:Identifier
+{ <...> }
+syntax parens:Expression =
+  "(" e:Expression ")"
+{ <...> }
+\end{minted}
+\begin{minted}{ocaml}
+ a  &  b  |  c
+(a  &  b) |  c
+ a  & (b  |  c)
+\end{minted}
+\caption{Example of two operators without defined precedence, and the two interpretations}
+\label{lst:undefined-precedence-operators}
+\end{listing}
+
+Listing~\ref{lst:undefined-precedence-operators} shows an example of two binary operators without defined precedence, requiring the user to explicitly group the operators. In this case the error produced will mark the correct part of the source code as ambiguous and present two different interpretations:
+
+\begin{itemize}
+  \item A \mintinline{text}{binaryOr} of a \mintinline{text}{binaryAnd} and a \mintinline{text}{variable}.
+  \item A \mintinline{text}{binaryAnd} of a \mintinline{text}{variable} and a \mintinline{text}{binaryOr}.
+\end{itemize}
+
+It is worth noting that the current implementation shows the above information, plus the source code location of each mentioned syntax construction instance (both start and end), but the location information is here omitted for brevity and readability.
+
+Ideally the system could detect that \mintinline{text}{parens} have no effect beyond grouping, and that it could be used to force one interpretation or the other, thus using it instead of the textual representation above, but that functionality is not present at the moment. As such the implementation will correctly identify the ambiguous section of the code, and provide a clear enough representation of the different ways to interpret the ambiguity, but no suggested changes are presented.
+
+\begin{listing}[h]
+\begin{minted}{text}
+syntax sum:Expression =
+  a:Expression "+" b:Expression
+{
+  #prec  11
+  #assoc left
+  <...>
+}
+syntax let:Expression =
+  "let" x:Identifier args:Pattern*
+  "=" e:Expression "in" body:Expression
+{ <...> }
+syntax bindingPattern:Pattern =
+  id:Identifier
+{ <...> }
+syntax integerLiteral:Expression =
+  i:Integer
+{ <...> }
+\end{minted}
+\begin{minted}{ocaml}
+ let x = 1 in  2  +  x
+(let x = 1 in  2) +  x
+ let x = 1 in (2  +  x)
+\end{minted}
+\caption{Example of a definition for a let expression leading to an ambiguous syntax}
+\label{lst:ambiguous-let-expr}
+\end{listing}
+
+Listing~\ref{lst:ambiguous-let-expr} shows a definition of a \mintinline{ocaml}{let} expression used for a while during construction of the OCaml subset in Section~\ref{sec:functional-eval}. The error presented marks the correct area of code, and presents two different interpretations:
+
+\begin{itemize}
+  \item A \mintinline{text}{sum} of a \mintinline{text}{let} and a \mintinline{text}{variable}.
+  \item A \mintinline{text}{let} of a \mintinline{text}{bindingPattern}, an \mintinline{text}{integerLiteral} and a \mintinline{text}{sum}.
+\end{itemize}
+
+The latter interpretation is somewhat less obvious than the former, since we rarely think of a \mintinline{ocaml}{let} expression in terms of its nested syntactical elements, but the meaning is clear enough after comparing the interpretation with the offending source code.
+
+It is worth noting here that parenthesis could be used for disambiguation, similar to above, but the syntax of OCaml dictates that the code in Listing~\ref{lst:ambiguous-let-expr} should be unambiguously parsed as the second alternative. The solution in this case is to give \mintinline{ocaml}{let} a low precedence.
+
+% TODO: write about [1; 2; 3]
+\begin{listing}[h]
+\begin{minted}{text}
+syntax sequentialComposition:Expression =
+  a:Expression ";" b:Expression
+{
+  #assoc right
+  #prec 2
+  <...>
+}
+syntax listLiteral:Expression =
+  "[" (e:Expression (";" es:Expression)*)? "]"
+{ <...> }
+syntax variable:Expression =
+  v:Identifier
+{ <...> }
+\end{minted}
+\begin{minted}{ocaml}
+[ a ; b ; c ]
+[(a ; b ; c)]
+[(a ; b); c ]
+[ a ; b ; c ]
+\end{minted}
+\caption{Example of an ambiguous list literal. The alternative interpretations are presented as OCaml would parse them.}
+\label{lst:ambiguous-list-literal}
+\end{listing}
+
+Listing~\ref{lst:ambiguous-list-literal} shows the list literal as originally implemented in the OCaml subset (see Section~\ref{sec:ambiguous-lists} for more details). The ambiguity occurs since the item separator in a list is the same as the sequential composition operator. The interpretations presented by the error message are as follows:
+
+\begin{itemize}
+  \item A sequence of a \mintinline{text}{sequentialComposition} and a \mintinline{text}{*} repetition covering no source code.
+  \item A sequence of a \mintinline{text}{sequentialComposition} and a \mintinline{text}{*} repetition covering \mintinline{text}{; c}.
+  \item A sequence of a \mintinline{text}{variable} and a \mintinline{text}{*} repetition covering \mintinline{text}{; b ; c}.
+\end{itemize}
+
+These interpretations expose rather more implementation details than the previous ones. A \mintinline{text}{sequence} refers to a parenthesised list of syntactical elements in a syntax description, i.e. \mintinline{text}{(e: Expression (";" es:Expression)*)} above. A \mintinline{text}{*} repetition refers to a syntactical element repeated using an EBNF operator, i.e. \mintinline{text}{(";" es:Expression)*} above.
+
+The \mintinline{text}{sequence} is reported instead of \mintinline{text}{listLiteral} since, implementation-wise, it is the closest node in the syntax tree that covers the entire ambiguity. The \mintinline{text}{listLiteral} also covers the square brackets, but those are parsed unambiguously. The repetition is reported as such instead of some number of \mintinline{text}{variable}s simply because it was the easiest information to obtain given the current implementation.
+
+A language implementer would probably appreciate the above representations of the interpretations, while an end user would most likely rather want the closest enclosing syntax construction and a list of its child syntax constructions, regardless of internal structure of the syntax construction and it possibly covering some unambiguous parts of the code.
+
+Either representation is simple to obtain, and could potentially be selected by the user depending on whether they are an end user or a language implementer.
+
+\subsection{Expansion Specification Errors}
+
+The tool implemented for this thesis performs the checking necessary to ensure that no syntax construction has an expansion that may produce a malformed syntax tree. The errors presented when such an expansion is encountered are informative, but no effort has been put into making the presentation user friendly. Keeping that in mind, the errors presented are one of the following:
+
+\begin{description}
+  \item[Missing export] The syntax construction specifies \mintinline{text}{#bind x before} or \mintinline{text}{#bind x after}, but the expansion does not expose \mintinline{text}{x}. This error is also produced if a syntax construction appears in the top-level scope in the syntax construction before expansion, but is in an inner scope or not present after expansion, since it could also export a symbol.
+
+  \item[Dependency error] The checker uses a concept of a dependency, which is either an \mintinline{text}{Identifier} or a syntax construction along with a direction (before or after). These define the sources from which a reference may find its binding. Since any of these sources may be used the dependency set of a syntax construction after expansion must be a superset of its dependency set before expansion.
+
+  \item[Self dependency] Following the definition of a dependency above, if a syntax construction depends on itself (i.e. on a copy of itself) after expansion, and it binds a symbol, then this symbol is defined (at least) twice. Technically this is only an error if at least two of the definitions are in the same scope, shadowing is allowed as long as it is in a child scope, but the implementation is currently slightly overly cautious and rejects any self dependency.
+
+  \item[Binding error] Since an expansion can use any syntax in its definition it may also introduce new bindings and identifiers. These are checked the same as normal name resolution and reported in a similar fashion.
+\end{description}
+
+The errors are presented in terms of hypothetical syntax trees with the syntax construction being checked as the root. References to elements in this tree are by position in the tree, since not all things are named in the syntax description and even things that are named might be duplicated because of an EBNF operator.
+
+As a non-trivial example, consider this implementation of an if statement (from the Lua implementation in Section~\ref{sec:imperative-eval}). The expansion uses the core language builtin \mintinline{text}{#if}, which requires the two branches to be single argument functions that are passed \mintinline{text}{#unit} if they are chosen for execution.
+
+\begin{minted}{text}
+syntax if:Statement =
+  "if" cond:Expression
+  "then" then:Block
+  elseif:("elseif" econd:Expression "then" ethen:Block)*
+  ("else" else:Block)? "end"
+{
+  #scope (then)
+  #scope elseif:(ethen)
+  #scope (else)
+
+  BExpression` efun return. efun break. #if (#deref `t(cond))
+    (fun _. `t(then) return break)
+    (fun _. `t(
+      foldr elseif next
+        (BExpression` #if (#deref `t(econd))
+          (fun _. `t(ethen) return break)
+          (fun _. `t(next)))
+      foldr else _
+        (BExpression` `t(else) return break)
+      (BExpression` #unit)))
+}
+\end{minted}
+
+Expansion checking produces several errors, here slightly abbreviated and clarified, and further explained and summarized later:
+\begin{enumerate}
+  \item \mintinline{text}{syntax#[1]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,0,1]}.
+  \item \mintinline{text}{syntax#[1]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,1,1]}.
+  \item \mintinline{text}{syntax#[3]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,0,1]}.
+  \item \mintinline{text}{syntax#[3]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,1,1]}.
+  \item \mintinline{text}{syntax#[4,0,1]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,1,1]}.
+  \item \mintinline{text}{syntax#[4,0,3]} needs \mintinline{text}{before} exports from \mintinline{text}{syntax#[4,1,1]}.
+  \item \mintinline{text}{syntax#[4,0,1]} \mintinline{text}{before} exports should be exported.
+  \item \mintinline{text}{syntax#[4,0,1]} \mintinline{text}{after} exports should be exported.
+  \item \mintinline{text}{syntax#[4,1,1]} \mintinline{text}{before} exports should be exported.
+  \item \mintinline{text}{syntax#[4,1,1]} \mintinline{text}{after} exports should be exported.
+\end{enumerate}
+
+The \mintinline{text}{syntax#[<...>]} expressions refer to elements in the syntax tree, for example, in \mintinline{text}{syntax#[4,0,1]} the \mintinline{text}{4} refers to \mintinline{text}{elseif:(<...>)*}, \mintinline{text}{0} refers to the first repetition of \mintinline{text}{elseif:(<...>)} (note the absence of \mintinline{text}{*}), and \mintinline{text}{1} refers to the second element in the parentheses, namely \mintinline{text}{econd}. Similarly, \mintinline{text}{syntax#[4,1,1]} also refers to \mintinline{text}{econd}, but in a different repetition of \mintinline{text}{elseif}.
+
+Using this information we can summarize the errors to the following list:
+
+\begin{enumerate}
+  \item \mintinline{text}{cond} needs \mintinline{text}{before} exports from \mintinline{text}{econd}. (1, 2)
+  \item \mintinline{text}{then} needs \mintinline{text}{before} exports from \mintinline{text}{econd}. (3, 4)
+  \item \mintinline{text}{econd} needs \mintinline{text}{before} exports from later repetitions of \mintinline{text}{econd}. (5)
+  \item \mintinline{text}{ethen} needs \mintinline{text}{before} exports from later repetitions of \mintinline{text}{econd}. (6)
+  \item Both \mintinline{text}{before} and \mintinline{text}{after} exports from \mintinline{text}{econd} need to be re-exported. (7-10)
+\end{enumerate}
+
+The errors arise because the expansion puts repetitions of \mintinline{text}{econd} inside functions, later repetitions nested further in, which restricts their exports, hiding them from most preceding elements as well as the surrounding syntax tree.
+
+The fix is two wrap the conditions in their own scope and restrict their exports before expansion; we most likely do not intend for variables bound in the condition to be visible outside of the if-statement.
+
+The errors presented here are perhaps not particularly nice to read or understand, but they contain the information needed to construct better messages, it ''just'' requires some more engineering and user experience effort.
+
+\subsection{Binding Errors}
+
+The errors presented by the implementation in the presence of binding errors add nothing new beyond what is common in most compilers. The following errors are reported:
+
+\begin{description}
+  \item[Undefined symbol] If an identifier is encountered in a non-binding position and no binding with the same symbol is in scope this error is reported, along with the source code location of the unresolved identifier.
+
+  \item[Symbol already defined] Bindings may shadow bindings from outer scopes, but if a symbol is defined twice in the same scope, and the bindings cover an overlapping area of code, then this error is reported. The source code location of both definitions are included.
+
+  The overlapping requirement is important: a binding that can be used both before and after its definition is defined by using both \mintinline{text}{#bind x before} and \mintinline{text}{#bind x after}. This binds the same symbol twice in the same scope, but since the bound areas do not overlap, no error is reported.
+\end{description}
+
+% TODO: this sentence is not very clear to most I think
+Since all errors are independent in the sense that none of them is the cause of any other, they can all be collected and presented to the user at once.
+
+No binding errors can be encountered during expansion of syntax construction, nor when all syntax constructions are expanded, thus all binding errors are reported in terms of the original source code written by the end user.
+
+\chapter{Discussion, Future Work and Conclusion}
+
+\section{Ambiguity} \label{sec:discussion-ambiguity}
+
+\subsection{Desired Ambiguity}
+
+When designing a grammar to describe the syntax of a programming language ambiguity tends to be an undesirable property. There are multiple reasons for this, for example some efficient algorithms require an unambiguous grammar (TODO: ref), or one might consider the possibility of encountering code that, while syntactically correct, does not have a well defined meaning is a bad thing.
+
+I would however argue that there is a place for ambiguity in programming language grammars, if we presuppose that code is read more often than it is written. Consider the expression \mintinline{python}{1 & 3 == 1}, where \mintinline{python}{&} is bitwise ''and'' and \mintinline{python}{==} is equality. The result of the expression depends on the relative precedence of the two operators. Thus a reader can know the precise semantics of all operators and values involved, and still not know what the code does.
+
+This is of course a tradeoff, the same argument could be made for an expression such as \mintinline{python}{1 + 2 * 3}, yet requiring explicit grouping for all expressions seems excessive. The difference stems from the frequency each operator is used, e.g., most code uses basic arithmetic and logical operators, but bitwise operators are relatively infrequent. The former are also taught early in mathematics, including precedence, thus most programmers would know the exact meaning of \mintinline{python}{1 + 2 * 3} while \mintinline{python}{1 & 3 == 1} would be less obvious.
+
+Worse, the meaning of the latter expression varies by language, even if the languages have the same meaning for the operators. The evaluation of that same expression in C and Python can be seen below.
+
+\begin{center}
+\begin{tabular}{c|c}
+C & Python \\
+\hline
+\mintinline{c}{1 & 3 == 1} & \mintinline{python}{1 & 3 == 1} \\
+\mintinline{c}{1 & (3 == 1)} & \mintinline{python}{(1 & 3) == 1} \\
+\mintinline{c}{1 & 0} & \mintinline{python}{1 == 1} \\
+\mintinline{c}{0} & \mintinline{python}{True} \\
+\end{tabular}
+\end{center}
+
+Thus a programmer who knows the precedence in one language may read the code, understand the semantics of all operators involved, and yet misunderstand the semantics of the expression.
+
+My suggestion then is the following: if most programmers would agree on the interpretation of some code it should be parsed unambiguously as such. If the correct interpretation is non-obvious then the programmer writing the code should be asked to clarify their intent, most likely by using parentheses for explicit grouping. The latter can be achieved with an ambiguous grammar and good error messages (Section~\ref{sec:errors-ambiguous} shows a good first step towards such error messages).
+
+The key then is to provide tools with which a language designer has ample control of where ambiguity is surfaced to an end user. This control should deal with both ambiguity and unambiguity, neither should appear accidentally when the intent was the opposite.
+
+Syntax constructions allow for ambiguity, but provide poor tools for controlling it (testing, see Section~\ref{sec:static-dynamic-ambiguity}) and sometimes require extensive rewrites to remove undesired ambiguity (see Section~\ref{sec:ambiguous-lists}).
+% TODO: this doesn't quite feel like an end
+% TODO: should probably have some more mention of what syntax constructions give here?
+
+\subsection{Static and Dynamic Ambiguity Detection} \label{sec:static-dynamic-ambiguity}
+
+The grammars generated by a set of syntax constructions may or may not be ambiguous. If the grammar is ambiguous an error might be raised at parse-time (as detailed in Section~\ref{sec:errors-ambiguous}), if the code being parsed exposes the ambiguity. This is analogous to code in a dynamically typed language raising an error if a type error is encountered at run-time.
+
+Correctness in a dynamically typed language tends to depend more on testing, manual or automated, rather than static guarantees, since those are largely absent. Testing for ambiguity is rather straightforward, merely provide example code and state whether it is ambiguous or not, then try parsing it.
+
+However, ambiguity is generally a property of a set of syntax constructions, not of any syntax construction in itself. Passing tests for one set of syntax constructions (i.e. a language) give little to no information for another set, even if the two intersect (i.e. they share syntax constructions). Thus a complete set of tests need to be created for each language.
+
+This is analogous to integration tests in a dynamically typed language; a new system (i.e. a new composition of sub-systems) require new integration tests. Regular programming languages additionally tend to have unit tests, which compose somewhat better and give some confidence in the correctness of the composition. Thus testing for a dynamically typed programming language is likely to scale better than testing for ambiguity with syntax constructions.
+
+Static ambiguity detection, i.e. compile-time checking, would likely scale better, since it would be automatic and ideally complete for each language without extra work for the language designer. The problem is that it is impossible; determining if a given context-free grammar is ambiguous is undecidable in the general case (TODO: ref).
+
+Several approaches could be adopted to circumvent this. There are a few heuristics (TODO: expand, ref). The grammars generated by syntax constructions could be constrained to a limited sub-set of context-free grammars where the ambiguity problem is decidable. TODO: write more and better here after some reference checking.
+
+\section{Discussion and Future Work}
 
 \section{Conclusion}
 
