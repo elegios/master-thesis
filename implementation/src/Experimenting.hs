@@ -2,15 +2,16 @@
 
 module Experimenting where
 
-import Control.DeepSeq (force)
+import Control.DeepSeq (NFData, force)
+import Data.Time (getCurrentTime, diffUTCTime)
 
 import Control.Exception (evaluate)
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Applicative (empty)
 import Control.Arrow ((&&&))
 import Data.Char (generalCategory)
 import System.Environment (getArgs)
-import System.IO (hGetContents, withFile, IOMode(ReadMode))
+import System.IO (hGetContents, withFile, IOMode(ReadMode), hFlush, stdout)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -55,7 +56,13 @@ hasOption opt = any (\a -> a == opt || a == shortOpt) <$> getArgs
 
 main :: IO ()
 main = do
+  bench <- hasOption "--bench"
+  if bench
+    then benchOperations
+    else normalOperations
 
+normalOperations :: IO ()
+normalOperations = do
   [startSym, coreGrammar, grammar, source] <- filter (not . isOption) <$> getArgs
   ignoreExpansionCheckingFailure <- hasOption "--ignore-expansion-check"
   putStrLn "\nParsing coreGrammar"
@@ -86,6 +93,13 @@ main = do
   putStrLn "\nInterpreting program"
   finalResult <- interpret coreProgram
   putStrLn $ "=> " ++ finalResult
+
+benchOperations :: IO ()
+benchOperations = do
+  [startSym, coreGrammar, grammar, fragmentFile] <- filter (not . isOption) <$> getArgs
+  fragment <- readFile fragmentFile >>= evaluate . force
+  let testPrograms = iterate (fragment ++) fragment
+  benchmark startSym coreGrammar grammar testPrograms
 
 resolveSource :: Gen pre => M.Map String ResolvedConstruction -> FixNode NoSplice pre -> IO (FixNode NoSplice GenSym)
 resolveSource resolvedConstructions node = case resolveNames resolvedConstructions node of
@@ -166,3 +180,45 @@ printTokens = interact $ unlines . map show . tokenize
 
 checkCategory :: IO ()
 checkCategory = interact $ unlines . map (show . generalCategory)
+
+benchmark :: String -> FilePath -> FilePath -> [String] -> IO ()
+benchmark startSym corePath langPath sources = do
+  coreConstructions <- getConstructions noImpl corePath
+  resolvedCoreConstructions <- resolveConstructions coreConstructions
+  constructions <- getConstructions (implementationGrammar coreConstructions) langPath
+  resolvedConstructions <- resolveConstructions constructions
+  let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
+  forM_ (zip [1..] sources) $ \(idx, source) -> do
+    evaluate $ force source
+    benchRow (show idx) $ do
+      tokens <- benchAction $ tokenize source
+      [node] <- benchAction . fst $ parseWithGrammar startSym constructions tokens
+      node' <- benchAction . fromData $ resolveNames resolvedConstructions node
+      expanded <- benchAction $ fullExpansion allResolvedConstructions node'
+      void . benchAction $ removeEFuns expanded
+  where
+    fromData (Data a) = a
+
+benchRow :: String -> IO a -> IO ()
+benchRow rowLabel m = do
+  putStr $ "\n" ++ rowLabel
+  void m
+  hFlush stdout
+
+benchAction :: NFData a => a -> IO a
+benchAction ret = do
+  startTime <- getCurrentTime
+  _ <- evaluate $ force ret
+  endTime <- getCurrentTime
+  _ <- evaluate $ force ret
+  postForce <- getCurrentTime
+  let full = postForce `diffUTCTime` startTime
+      forceOnly = postForce `diffUTCTime` endTime
+      firstOnly = endTime `diffUTCTime` startTime
+  -- putStr $ ", " ++ show full
+  --       ++ ", " ++ show (firstOnly - forceOnly)
+  --       ++ ", " ++ show forceOnly
+  putStr $ ", " ++ show ((realToFrac $ firstOnly - forceOnly) :: Double)
+  return ret
+
+  -- TODO: it is annoying to give header everytime, and engineering formatting might be annoying for google sheets, if that is what I'll use

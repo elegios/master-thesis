@@ -33,9 +33,9 @@ syntax argList:ArgList =
 {
   BExpression` efun f. `t(
     foldl es prev
-      (BExpression` (#deref `t(prev)) (#deref `t(es)))
+      (BExpression` (#deref `t(prev)) `t(es))
     foldl e prev
-      (BExpression` (#deref `t(prev)) (#deref `t(e)))
+      (BExpression` (#deref `t(prev)) `t(e))
     (BExpression` f))
 }
 
@@ -43,27 +43,13 @@ syntax debugPrint:Expression = "#" "debug" {
   BExpression` fun x. fun _. #print x
 }
 
-syntax true:Expression = "true" {
-  BExpression` #true
-}
-
-syntax false:Expression = "false" {
-  BExpression` #false
+syntax debugCrash:Statement = "#" "crash" {
+  BExpression` #crash
 }
 
 syntax equal:Expression = a:Expression "==" b:Expression {
   #prec 8
   BExpression` #equal (#deref `t(a)) (#deref `t(b))
-}
-
-syntax leq:Expression = a:Expression "<=" b:Expression {
-  #prec 8
-  BExpression` #leq (#deref `t(a)) (#deref `t(b))
-}
-
-syntax and:Expression = a:Expression "and" b:Expression {
-  #prec 7
-  BExpression` #and (#deref `t(a)) (#deref `t(b))
 }
 
 syntax plus:Expression = a:Expression "+" b:Expression {
@@ -110,13 +96,14 @@ syntax assignment:Statement =
 }
 
 syntax local:Statement =
-  "local" x:Identifier ("=" e:Expression)?
+  "local" x:Pattern ("=" e:Expression)?
 {
-  #bind x after
   #scope (e)
   BExpression` efun _. efun _.
-    defAfter `id(x) = #ref
-      (#deref `t(foldr e _ (e) (BExpression` #unit)))
+    (fun expr. #callcc (fun done.
+      (#callcc (fun fail. (`t(x) fail expr; done #unit));
+       `t(x) (fun _. #crash) (#deref expr))))
+    (#ref (#deref `t(foldr e _ (e) (BExpression` #unit))))
 }
 
 syntax block:Statement = "do" b:Block "end" {
@@ -132,10 +119,6 @@ syntax if:Statement =
   #scope (cond (then))
   #scope elseif:(econd (ethen))
   #scope (else)
-
-  //#scope (then)
-  //#scope elseif:(ethen)
-  //#scope (else)
 
   BExpression` efun return. efun break. #if (#deref `t(cond))
     (fun _. `t(then) return break)
@@ -160,7 +143,7 @@ syntax while:Statement =
         (fun _.
           (`t(body) return break;
            repeat #unit))
-        (fun _. #unit)) #unit)
+        (fun _. #unit)))
 }
 
 syntax repeat:Statement =
@@ -171,27 +154,26 @@ syntax repeat:Statement =
     #fix (fun repeat. fun _. (
       `t(body) return break;
       #if (#deref `t(cond))
-        (fun _. #unit)
-        (fun _. repeat #unit))) #unit)
+        (fun _. repeat #unit)
+        (fun _. #unit))))
 }
 
 syntax numFor:Statement =
-  "for" i:Identifier "="
+  "for" i:Pattern "="
   s:Expression "," e:Expression
   ("," step:Expression)?
   "do" body:Block "end"
 {
-  #bind i in body
   #scope (s)
   #scope (e)
   #scope (step)
-  #scope (body)
+  #scope (i (body))
   BExpression` efun return. efun _.
     (defAfter step = #deref
       `t(foldr step _ (step) (BExpression` 1));
      defAfter end = #deref `t(e);
      #callcc (fun break. #fix (fun rep. fun x.
-       (defAfter `id(i) = x;
+       (`t(i) (fun _. #crash) x;
         #if (#leq x end)
           (fun _. (`t(body) return break;
                    rep (#plus x step)))
@@ -201,23 +183,23 @@ syntax numFor:Statement =
 
 syntax function:Statement =
   "function" f:Identifier
-  "(" (a:Identifier ("," as:Identifier)*)? ")"
+  "(" (a:Pattern ("," as:Pattern)*)? ")"
   body:Block "end"
 {
   #bind f before
   #bind f after
-  #bind f, a, as in body
-  #scope (body)
+  #bind f in body
+  #scope (a as (body))
   BExpression` efun _. efun _.
     (defAround `id(f) = #fix (fun recur.
       (defAfter `id(f) = recur;
        `t(foldr a next
-            (BExpression` fun arg.
-              (defAfter `id(a) = (#ref arg);
+            (BExpression` fun x.
+              (`t(a) (fun _. #crash) x;
                `t(next)))
           foldr as next
-            (BExpression` fun arg.
-              (defAfter `id(as) = (#ref arg);
+            (BExpression` fun x.
+              (`t(as) (fun _. #crash) x;
                `t(next)))
           (BExpression` fun _. #callcc (fun return.
             `t(body) return (fun _. #crash)))))))
@@ -246,3 +228,67 @@ syntax break:Return = "break" {
   BExpression` efun return. efun break. break #unit
 }
 
+// These are included here copied, with no changes, to simulate the cherrypicking process
+
+syntax intPat:Pattern = i:Integer {
+  BExpression` efun fail. efun val.
+    #if (#equal `int(i) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax floatPat:Pattern = f:Float {
+  BExpression` efun fail. efun val.
+    #if (#equal `float(f) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax stringPat:Pattern = s:String {
+  BExpression` efun fail. efun val.
+    #if (#equal `str(s) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax bindPat:Pattern = id:Identifier {
+  #bind id after
+  BExpression` efun _. efun val.
+    defAfter `id(id) = val
+}
+syntax wildcardPat:Pattern = "_" {
+  BExpression` efun _. efun _. #unit
+}
+syntax listPat:Pattern =
+  "[" (p:Pattern (";" ps:Pattern)*)? "]"
+{
+  BExpression` efun fail. efun val.
+    `t(foldr p next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(p) fail (#head prev);
+            `t(next) (#tail prev)))
+       foldr ps next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(ps) fail (#head prev);
+            `t(next) (#tail prev)))
+       (BExpression` (efun prev.
+         #if (#equal prev #nil)
+           (fun _. #unit)
+           (fun _. fail #unit))))
+    val
+}
+syntax consPat:Pattern = h:Pattern ":" ":" t:Pattern {
+  #assoc right
+  #prec 10
+  BExpression` efun fail. efun value.
+    (#if (#equal value #nil)
+       (fun _. fail #unit)
+       (fun _. #unit);
+     defAfter headValue = #head value;
+     `t(h) fail headValue;
+     defAfter tailValue = #tail value;
+     `t(t) fail tailValue)
+}

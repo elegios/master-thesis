@@ -33,7 +33,8 @@ fullExpansion constructions = recur
 expandOne :: (String -> Node -> Maybe MidNode) -> MidNode -> Maybe MidNode
 expandOne expander = \case
   MidNode n@Node{name, children} -> (\ms -> MidNode $ n {children = ms}) <$> expandChild children
-                                <|> trace name <$> expander name (FixNode n)
+                                -- <|> trace name <$> expander name (FixNode n)
+                                <|> expander name (FixNode n)
   Repeated rep ms -> Repeated rep <$> expandChild ms
   Sequenced r ms -> Sequenced r <$> expandChild ms
   _ -> Nothing

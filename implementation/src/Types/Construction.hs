@@ -2,6 +2,9 @@
 
 module Types.Construction where
 
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData, rnf)
+
 import Control.Applicative ((<|>))
 import Data.Data (Data, Typeable)
 
@@ -27,7 +30,8 @@ data SyntaxPattern = IdentifierPat
                    | NamedPat String SyntaxPattern
                    deriving (Show, Eq, Data, Typeable)
 
-data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq, Data, Typeable)
+data Repeat = StarRep | PlusRep | QuestionRep deriving (Show, Eq, Data, Typeable, Generic)
+instance NFData Repeat
 
 data ExtraData = ExtraData
   { assocData :: Maybe AssocData
@@ -55,6 +59,8 @@ data AssocData = AssocLeft | AssocRight deriving (Show, Eq)
 data FoldDir = FoldLeft | FoldRight deriving (Eq, Show)
 
 data NoSplice n
+instance NFData (NoSplice n) where
+  rnf !_ = ()
 data Splice n = Syntax n
               | Simple String
               | Fold FoldDir String String (Splice n) (Splice n)

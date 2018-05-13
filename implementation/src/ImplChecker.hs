@@ -2,6 +2,8 @@
 
 module ImplChecker (check, Error(..)) where
 
+import Debug.Trace
+
 import Control.Monad (zipWithM)
 import Control.Arrow ((&&&), (***))
 
@@ -68,7 +70,8 @@ doCheck resConstrs constrName _expand pats = S.unions $ inner <$> pairs
       MidNode n' -> FixNode n'
       MidSplice s' -> FixNode $ SyntaxSplice s'
       m' -> error $ "Compiler error: expansion returned non-node: " ++ show m' ++ " in constrName: " ++ show constrName
-    pairs = (id &&& expand) . mkNode <$> generateVariations pats
+    pairs = (id &&& expand) . mkNode <$> (traceVariationCount $ generateVariations pats)
+    traceVariationCount pats = trace (constrName ++ ": " ++ show (length pats)) pats
     mkNode children = FixNode Node { name = constrName, children, nodeRange = mempty }
 
 generateVariations :: [SyntaxPattern] -> [[MidNode FakeNodeS]]
@@ -94,6 +97,7 @@ gen _ path = return $ fakeNode OtherKind path
 fakeNode :: FakeKind -> [Int] -> MidNode FakeNodeS
 fakeNode kind path = MidSplice . FakeNodeS $ FakeNode kind path
 
+-- BUG: if a construction contains both defining and referencing identifier expansion may move them without preserving the reference, since all identifiers are generated with distinct symbols. Should instead be that all *binding* identifiers are generated with distinct symbols and all *referencing* identifiers are generated with FakeNodes that do not export any symbols, only refer to them, and all those dependencies must be preserved
 fakeIdentifier :: [Int] -> MidNode FakeNodeS
 fakeIdentifier path = MidIdentifier mempty $ GenSym (show path) 1
 

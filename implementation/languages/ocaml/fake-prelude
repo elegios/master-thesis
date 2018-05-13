@@ -1,0 +1,2 @@
+let p_int x = #debug x
+let print_endline x = #debug x

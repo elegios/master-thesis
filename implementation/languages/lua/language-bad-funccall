@@ -1,5 +1,4 @@
 syntax top:File = body:Block {
-  #scope (body)
   BExpression` #callcc (fun return.
     `t(body) return (fun _. #crash))
 }
@@ -19,12 +18,15 @@ syntax strLit:Expression = s:String {
 // This has incorrect semantics when called with the wrong number of arguments
 // Also breaks precedence transformation, f must be high precedence, e and es must be low precence :(
 syntax funcCall:Expression =
-  f:Expression "(" args:ArgList ")"
+  f:Expression "(" (e:Expression ("," es:Expression)*)? ")"
 {
-  #prec 15
-  #scope (args)
-  #scope (f)
-  BExpression` `t(args) `t(f) #unit
+  BExpression` `t(
+    foldl es prev
+      (BExpression` (#deref `t(prev)) `t(es))
+    foldl e prev
+      (BExpression` (#deref `t(prev)) `t(e))
+    f)
+    #unit
 }
 
 // This is included to enable the Expressions to go to the top level Expression non-terminal, ideally it would be defined inline in funcCall, but then it would recurse into a lower precedence
@@ -33,9 +35,9 @@ syntax argList:ArgList =
 {
   BExpression` efun f. `t(
     foldl es prev
-      (BExpression` (#deref `t(prev)) (#deref `t(es)))
+      (BExpression` (#deref `t(prev)) `t(es))
     foldl e prev
-      (BExpression` (#deref `t(prev)) (#deref `t(e)))
+      (BExpression` (#deref `t(prev)) `t(e))
     (BExpression` f))
 }
 
@@ -43,27 +45,9 @@ syntax debugPrint:Expression = "#" "debug" {
   BExpression` fun x. fun _. #print x
 }
 
-syntax true:Expression = "true" {
-  BExpression` #true
-}
-
-syntax false:Expression = "false" {
-  BExpression` #false
-}
-
 syntax equal:Expression = a:Expression "==" b:Expression {
   #prec 8
   BExpression` #equal (#deref `t(a)) (#deref `t(b))
-}
-
-syntax leq:Expression = a:Expression "<=" b:Expression {
-  #prec 8
-  BExpression` #leq (#deref `t(a)) (#deref `t(b))
-}
-
-syntax and:Expression = a:Expression "and" b:Expression {
-  #prec 7
-  BExpression` #and (#deref `t(a)) (#deref `t(b))
 }
 
 syntax plus:Expression = a:Expression "+" b:Expression {
@@ -97,8 +81,6 @@ syntax parens:Expression = "(" e:Expression ")" {
 syntax funcCallStmnt:Statement =
   f:Expression "(" args:ArgList ")"
 {
-  #scope (f)
-  #scope (args)
   BExpression` efun _. efun _. `t(args) `t(f) #unit
 }
 
@@ -113,7 +95,6 @@ syntax local:Statement =
   "local" x:Identifier ("=" e:Expression)?
 {
   #bind x after
-  #scope (e)
   BExpression` efun _. efun _.
     defAfter `id(x) = #ref
       (#deref `t(foldr e _ (e) (BExpression` #unit)))
@@ -129,14 +110,6 @@ syntax if:Statement =
   elseif:("elseif" econd:Expression "then" ethen:Block)*
   ("else" else:Block)? "end"
 {
-  #scope (cond (then))
-  #scope elseif:(econd (ethen))
-  #scope (else)
-
-  //#scope (then)
-  //#scope elseif:(ethen)
-  //#scope (else)
-
   BExpression` efun return. efun break. #if (#deref `t(cond))
     (fun _. `t(then) return break)
     (fun _. `t(
@@ -153,26 +126,24 @@ syntax while:Statement =
   "while" cond:Expression "do"
   body:Block "end"
 {
-  #scope (cond (body))
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _.
       #if (#deref `t(cond))
         (fun _.
           (`t(body) return break;
            repeat #unit))
-        (fun _. #unit)) #unit)
+        (fun _. #unit)))
 }
 
 syntax repeat:Statement =
   "repeat" body:Block "until" cond:Expression
 {
-  #scope ((body) cond)
   BExpression` efun return. efun _. #callcc (fun break.
     #fix (fun repeat. fun _. (
       `t(body) return break;
       #if (#deref `t(cond))
-        (fun _. #unit)
-        (fun _. repeat #unit))) #unit)
+        (fun _. repeat #unit)
+        (fun _. #unit))))
 }
 
 syntax numFor:Statement =
@@ -182,10 +153,6 @@ syntax numFor:Statement =
   "do" body:Block "end"
 {
   #bind i in body
-  #scope (s)
-  #scope (e)
-  #scope (step)
-  #scope (body)
   BExpression` efun return. efun _.
     (defAfter step = #deref
       `t(foldr step _ (step) (BExpression` 1));
@@ -193,9 +160,9 @@ syntax numFor:Statement =
      #callcc (fun break. #fix (fun rep. fun x.
        (defAfter `id(i) = x;
         #if (#leq x end)
+          (fun _. `t(body) return break)
           (fun _. (`t(body) return break;
-                   rep (#plus x step)))
-          (fun _. #unit)))
+                   rep (#plus x step)))))
        `t(s)))
 }
 
@@ -207,18 +174,13 @@ syntax function:Statement =
   #bind f before
   #bind f after
   #bind f, a, as in body
-  #scope (body)
   BExpression` efun _. efun _.
     (defAround `id(f) = #fix (fun recur.
       (defAfter `id(f) = recur;
        `t(foldr a next
-            (BExpression` fun arg.
-              (defAfter `id(a) = (#ref arg);
-               `t(next)))
+            (BExpression` fun `id(a). `t(next))
           foldr as next
-            (BExpression` fun arg.
-              (defAfter `id(as) = (#ref arg);
-               `t(next)))
+            (BExpression` fun `id(as). `t(next))
           (BExpression` fun _. #callcc (fun return.
             `t(body) return (fun _. #crash)))))))
 }

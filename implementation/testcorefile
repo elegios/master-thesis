@@ -1,0 +1,12 @@
+defAfter plus = #plus;
+defAfter minus = #minus;
+defAfter multiply = #multiply;
+defAfter divide = #divide;
+
+defAfter pi = 3.141592;
+
+plus 3 4;
+
+minus 5 25.3;
+
+defAfter circumference = fun r. multiply 2 pi r

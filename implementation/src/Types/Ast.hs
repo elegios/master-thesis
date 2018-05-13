@@ -8,6 +8,9 @@ module Types.Ast
 , prettyShow
 ) where
 
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData)
+
 import Data.Function ((&))
 import Data.List (intercalate)
 
@@ -20,12 +23,14 @@ import Types.Lexer (Ranged(..), Range, Token(..))
 newtype FixNode s i = FixNode { unSplice :: NodeI (s (FixNode s i)) i} deriving (Ranged)
 deriving instance (Show (s (FixNode s i)), Show i) => Show (FixNode s i)
 deriving instance (Eq (s (FixNode s i)), Eq i) => Eq (FixNode s i)
+deriving instance (NFData (s (FixNode s i)), NFData i) => NFData (FixNode s i)
 data NodeI s i = Node
   { name :: String
   , children :: [MidNodeI s i]
   , nodeRange :: Range }
   | SyntaxSplice s
-  deriving (Eq)
+  deriving (Eq, Generic)
+instance (NFData s, NFData i) => NFData (NodeI s i)
 
 data MidNodeI s i = MidNode (NodeI s i)
                   | MidIdentifier Range i
@@ -33,7 +38,8 @@ data MidNodeI s i = MidNode (NodeI s i)
                   | Basic Token
                   | Repeated Repeat [MidNodeI s i]
                   | Sequenced Range [MidNodeI s i]
-                  deriving (Eq)
+                  deriving (Eq, Generic)
+instance (NFData s, NFData i) => NFData (MidNodeI s i)
 
 instance (Show s, Show i) => Show (NodeI s i) where
   show Node{name, children, nodeRange} = name ++ "{" ++ show nodeRange ++ "}" ++ showNamed children

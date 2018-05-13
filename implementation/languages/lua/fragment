@@ -1,0 +1,5 @@
+do
+  function identity(x)
+    return x
+  end
+end

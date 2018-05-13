@@ -11,22 +11,23 @@ let appliTest = f a b c
 let ariTest = a + b * c + d
 
 let funcTest a b = a + b
+let blub = [a; b; c]
 
 //let matchTest = match [4; a; "blub"] with
-let matchTest = match 4 with
-  | 3 -> "three"
-  | 4 -> "four"
-  | [] -> "empty list"
-  | [a] -> "one in list and name bind" + a
-  | [a;b;c] -> "three in list"
+//let matchTest = match 4 with
+//  | 3 -> "three"
+//  | 4 -> "four"
+//  | [] -> "empty list"
+//  | [a] -> "one in list and name bind" + a
+//  | [a;b;c] -> "three in list"
 // | _ -> "Anything"
 
-let testThing = match 10 :: 20 :: 30 :: [] with
-  | [] -> print "none"
-  | [a] -> print "one"; print a
-  | [a; b] -> print "two"; print a; print b
-  | a :: b :: c -> print "two or more"; print a; print b; print c
-  | [a; b; c] -> print "three"; print a; print b; print c
+//let testThing = match 10 :: 20 :: 30 :: [] with
+//  | [] -> print "none"
+//  | [a] -> print "one"; print a
+//  | [a; b] -> print "two"; print a; print b
+//  | a :: b :: c -> print "two or more"; print a; print b; print c
+//  | [a; b; c] -> print "three"; print a; print b; print c
 
 let letChain =
   let a = 1 in

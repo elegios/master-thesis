@@ -33,9 +33,9 @@ syntax argList:ArgList =
 {
   BExpression` efun f. `t(
     foldl es prev
-      (BExpression` (#deref `t(prev)) (#deref `t(es)))
+      (BExpression` (#deref `t(prev)) `t(es))
     foldl e prev
-      (BExpression` (#deref `t(prev)) (#deref `t(e)))
+      (BExpression` (#deref `t(prev)) `t(e))
     (BExpression` f))
 }
 
@@ -43,27 +43,9 @@ syntax debugPrint:Expression = "#" "debug" {
   BExpression` fun x. fun _. #print x
 }
 
-syntax true:Expression = "true" {
-  BExpression` #true
-}
-
-syntax false:Expression = "false" {
-  BExpression` #false
-}
-
 syntax equal:Expression = a:Expression "==" b:Expression {
   #prec 8
   BExpression` #equal (#deref `t(a)) (#deref `t(b))
-}
-
-syntax leq:Expression = a:Expression "<=" b:Expression {
-  #prec 8
-  BExpression` #leq (#deref `t(a)) (#deref `t(b))
-}
-
-syntax and:Expression = a:Expression "and" b:Expression {
-  #prec 7
-  BExpression` #and (#deref `t(a)) (#deref `t(b))
 }
 
 syntax plus:Expression = a:Expression "+" b:Expression {
@@ -133,10 +115,6 @@ syntax if:Statement =
   #scope elseif:(econd (ethen))
   #scope (else)
 
-  //#scope (then)
-  //#scope elseif:(ethen)
-  //#scope (else)
-
   BExpression` efun return. efun break. #if (#deref `t(cond))
     (fun _. `t(then) return break)
     (fun _. `t(
@@ -160,7 +138,7 @@ syntax while:Statement =
         (fun _.
           (`t(body) return break;
            repeat #unit))
-        (fun _. #unit)) #unit)
+        (fun _. #unit)))
 }
 
 syntax repeat:Statement =
@@ -171,8 +149,8 @@ syntax repeat:Statement =
     #fix (fun repeat. fun _. (
       `t(body) return break;
       #if (#deref `t(cond))
-        (fun _. #unit)
-        (fun _. repeat #unit))) #unit)
+        (fun _. repeat #unit)
+        (fun _. #unit))))
 }
 
 syntax numFor:Statement =
@@ -212,13 +190,9 @@ syntax function:Statement =
     (defAround `id(f) = #fix (fun recur.
       (defAfter `id(f) = recur;
        `t(foldr a next
-            (BExpression` fun arg.
-              (defAfter `id(a) = (#ref arg);
-               `t(next)))
+            (BExpression` fun `id(a). `t(next))
           foldr as next
-            (BExpression` fun arg.
-              (defAfter `id(as) = (#ref arg);
-               `t(next)))
+            (BExpression` fun `id(as). `t(next))
           (BExpression` fun _. #callcc (fun return.
             `t(body) return (fun _. #crash)))))))
 }
@@ -246,3 +220,131 @@ syntax break:Return = "break" {
   BExpression` efun return. efun break. break #unit
 }
 
+// syntax ocamlInLua:Statement = e:OcamlExpression {
+//   BExpression` efun return. efun break. `t(e)
+// }
+// syntax luaInOcaml:OcamlExpression = s:Statement {
+//   BExpression` `t(s) (fun _. #crash) (fun _. #crash)
+// }
+
+// Becomes infinitely ambiguous, so to speak. Any Statement can be parsed
+// through any number of ocamlInLua(luaInOcaml([...])) wrappers.
+
+// syntax ocamlInLua:Expression = e:OcamlExpression {
+//   e
+// }
+// syntax luaInOcaml:OcamlExpression = e:Expression {
+//   e
+// }
+
+// also infinitely ambiguous, for the same reason.
+
+// syntax ocamlInLua:Statement = e:OcamlExpression {
+//   BExpression` efun return. efun break. `t(e)
+// }
+// syntax luaInOcaml:OcamlExpression = e:Expression {
+//   e
+// }
+
+//match 4 with
+//  | 1 -> print(1)
+//  | a -> print(a)
+// gives ambiguity in the form of (match [...] print)(a) or (match [...] print(a))
+
+// print(1)
+// gives ambiguity in the form of (print(1)) or (print)(1), since we can go
+// through the *In* constructions or not.
+// Precisely what trees are available as ambiguities I'm not sure, error
+// is as follows:
+// Ambiguity: 54:1-54:9
+// Repr rep* [(sequence,54:1-54:9)] 54:1-54:9
+// Repr rep* [(sequence,54:1-54:6),(sequence,54:6-54:9)] 54:1-54:9
+
+// It allows writing expressions in statement position, so we can suddenly
+// write a single identifier or an arithmetic expression "loose", so the above
+// error is [Statement(FuncCall)] vs [Statement(Var), Statement(Paren(IntLit))]
+
+
+// These are copied without any change from ocaml to simulate importing, except Expression switched for OcamlExpression, since the types would almost certainly be different in a real world situation
+
+syntax match:OcamlExpression =
+  "match" e:OcamlExpression "with"
+  arm:("|" p:Pattern "->" body:OcamlExpression)+
+{
+  #scope arm:(p body)
+  #scope (e)
+  #prec 1
+  BExpression` #callcc (fun end. (fun val.
+    `t(foldr arm prev
+         (BExpression`
+           #callcc (fun next.
+             (`t(p) next val;
+              end `t(body)));
+           `t(prev))
+       (BExpression` #crash)))
+    `t(e))
+}
+
+
+syntax intPat:Pattern = i:Integer {
+  BExpression` efun fail. efun val.
+    #if (#equal `int(i) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax floatPat:Pattern = f:Float {
+  BExpression` efun fail. efun val.
+    #if (#equal `float(f) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax stringPat:Pattern = s:String {
+  BExpression` efun fail. efun val.
+    #if (#equal `str(s) val)
+      (fun _. #unit)
+      (fun _. fail #unit)
+}
+syntax bindPat:Pattern = id:Identifier {
+  #bind id after
+  BExpression` efun _. efun val.
+    defAfter `id(id) = val
+}
+syntax wildcardPat:Pattern = "_" {
+  BExpression` efun _. efun _. #unit
+}
+syntax listPat:Pattern =
+  "[" (p:Pattern (";" ps:Pattern)*)? "]"
+{
+  BExpression` efun fail. efun val.
+    `t(foldr p next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(p) fail (#head prev);
+            `t(next) (#tail prev)))
+       foldr ps next
+         (BExpression` efun prev.
+           (#if (#equal prev #nil)
+              (fun _. fail #unit)
+              (fun _. #unit);
+            `t(ps) fail (#head prev);
+            `t(next) (#tail prev)))
+       (BExpression` (efun prev.
+         #if (#equal prev #nil)
+           (fun _. #unit)
+           (fun _. fail #unit))))
+    val
+}
+syntax consPat:Pattern = h:Pattern ":" ":" t:Pattern {
+  #assoc right
+  #prec 10
+  BExpression` efun fail. efun value.
+    (#if (#equal value #nil)
+       (fun _. fail #unit)
+       (fun _. #unit);
+     defAfter headValue = #head value;
+     `t(h) fail headValue;
+     defAfter tailValue = #tail value;
+     `t(t) fail tailValue)
+}

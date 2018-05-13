@@ -1,50 +1,21 @@
+// TODO: Need two new syntax types, one for Statements, one for NonStatements, both going through to Expression, and including the same syntax constructions, except for Statement which also has seqComp (which is not in the other). Necessary since a few things use precedence to solve ambiguities, and they are of lower or same precedence as seqComp, so seqComp can't just be introduced as its own syntax type without making things ambiguous again. Requires duplication of let and match I think. Possible that let doesn't need to be duplicated, but match definitely does.
 
 syntax top:File = ts:Top+ {
   foldl1 ts prev (BExpression` `t(prev); `t(ts))
 }
 
-// TODO: if args[1] has #bind before and args[0] uses it then args[0] will work before expansion, but not after
-//       same for letExpr
 syntax topLet:Top =
   "let" x:Identifier args:Pattern*
-  "=" e:Expression (";" ";")?
+  "=" e:Statement (";" ";")?
 {
   #bind x after
-  #scope (args (e))
+  #scope (args e)
   BExpression` defAfter `id(x) = `t(
     foldr args next
       (BExpression` fun x.
         (`t(args) (fun _. #crash) x;
          `t(next)))
     e)
-}
-
-syntax topLetRec:Top =
-  "let" "rec" x:Identifier args:Pattern*
-  "=" e:Expression
-  more:("and" x2:Identifier args2:Pattern*
-        "=" e2:Expression)* (";" ";")?
-{
-  #bind x, x2 after
-  #bind x, x2 in e, e2
-  #scope (args (e))
-  #scope more:(args2 (e2))
-  BExpression`
-  defAround `id(x) = #fix (fun `id(x).
-    `t(foldr args next
-         (BExpression` fun x.
-           (`t(args) (fun _. #crash) x;
-            `t(next)))
-       e));
-  `t(foldl more prevdef
-       (BExpression` `t(prevdef);
-        defAround `id(x2) = #fix (fun `id(x2).
-          `t(foldr args2 next
-               (BExpression` fun x.
-                 (`t(args2) (fun _. #crash) x;
-                  `t(next)))
-             e2)))
-     (BExpression` #unit))
 }
 
 syntax debugPrint:Expression = "#" "debug" {
@@ -59,12 +30,12 @@ syntax funApp:Expression = f:Expression arg:Expression {
 
 syntax letExpr:Expression =
   "let" x:Identifier args:Pattern*
-  "=" e:Expression "in" body:Expression
+  "=" e:Expression "in" body:Statement
 {
   #prec 2
   #bind x in body
   #scope (body)
-  #scope (args (e))
+  #scope (args e)
   BExpression` defAfter `id(x) = `t(
     foldr args next
       (BExpression` fun x.
@@ -74,30 +45,13 @@ syntax letExpr:Expression =
   `t(body)
 }
 
-syntax letRecExpr:Expression =
-  "let" "rec" x:Identifier args:Pattern*
-  "=" e:Expression "in" body:Expression
-{
-  #prec 2
-  #bind x in e, body
-  #scope (body)
-  #scope (args (e))
-  BExpression` defAfter `id(x) = #fix (fun `id(x).
-    `t(foldr args next
-         (BExpression` fun x.
-           (`t(args) (fun _. #crash) x;
-            `t(next)))
-       e));
-    `t(body)
-}
-
 syntax match:Expression =
   "match" e:Expression "with"
-  arm:("|" p:Pattern "->" body:Expression)+
+  arm:("|" p:Pattern "->" body:Statement)+
 {
   #scope arm:(p body)
   #scope (e)
-  #prec 2
+  #prec 1
   BExpression` #callcc (fun end. (fun val.
     `t(foldr arm prev
          (BExpression`
@@ -115,35 +69,16 @@ syntax plus:Expression = a:Expression "+" b:Expression {
   BExpression` #plus `t(a) `t(b)
 }
 
-syntax minus:Expression = a:Expression "-" b:Expression {
-  #prec 11
-  #assoc left
-  BExpression` #minus `t(a) `t(b)
-}
-
 syntax times:Expression = a:Expression "*" b:Expression {
   #assoc left
   #prec 12
   BExpression` #multiply `t(a) `t(b)
 }
 
-syntax equal:Expression = a:Expression "=" b:Expression {
-  #assoc left
-  #prec 10
-  BExpression` #equal `t(a) `t(b)
-}
-
-syntax leq:Expression = a:Expression "<=" b:Expression {
-  #assoc left
-  #prec 10
-  BExpression` #leq `t(a) `t(b)
-}
-
-syntax parens:Expression = "(" e:Expression ")" {
+syntax parens:Expression = "(" e:Statement ")" {
   e
 }
 
-// NOTE: ideally :: would be interpreted as a single token here, but : is one of the symbol tokens that do not merge
 syntax cons:Expression =
   h:Expression "::" t:Expression
 {
@@ -152,7 +87,11 @@ syntax cons:Expression =
   BExpression` #cons `t(h) `t(t)
 }
 
-syntax seqComp:Expression = a:Expression ";" b:Expression {
+syntax normalExpression:Statement = e:Expression {
+  e
+}
+
+syntax seqComp:Statement = a:Statement ";" b:Statement {
   #assoc right
   #prec 2
   BExpression` `t(a); `t(b)
@@ -160,8 +99,6 @@ syntax seqComp:Expression = a:Expression ";" b:Expression {
 
 syntax var:Expression = v:Identifier { BExpression``id(v) }
 syntax unitLit:Expression = "(" ")" { BExpression` #unit }
-syntax trueLit:Expression = "true" { BExpression` #true }
-syntax falseLit:Expression = "false" { BExpression` #false }
 syntax IntLit:Expression = n:Integer { BExpression``int(n) }
 syntax FloatLit:Expression = f:Float { BExpression``float(f) }
 syntax StringLit:Expression = s:String { BExpression``str(s) }
@@ -173,18 +110,6 @@ syntax listLit:Expression =
   foldr es next
     (BExpression` #cons `t(es) `t(next))
   (BExpression` #nil)
-}
-syntax funLit:Expression =
-  "fun" args:Pattern+ "->"
-  body:Expression
-{
-  #prec 1
-  #scope (args (body))
-  foldr args next
-    (BExpression` fun x.
-      (`t(args) (fun _. #crash) x;
-       `t(next)))
-  body
 }
 
 syntax intPat:Pattern = i:Integer {
@@ -202,18 +127,6 @@ syntax floatPat:Pattern = f:Float {
 syntax stringPat:Pattern = s:String {
   BExpression` efun fail. efun val.
     #if (#equal `str(s) val)
-      (fun _. #unit)
-      (fun _. fail #unit)
-}
-syntax truePat:Pattern = "true" {
-  BExpression` efun fail. efun val.
-    #if (#equal #true val)
-      (fun _. #unit)
-      (fun _. fail #unit)
-}
-syntax falsePat:Pattern = "false" {
-  BExpression` efun fail. efun val.
-    #if (#equal #false val)
       (fun _. #unit)
       (fun _. fail #unit)
 }
@@ -252,8 +165,8 @@ syntax listPat:Pattern =
 syntax consPat:Pattern = h:Pattern "::" t:Pattern {
   #assoc right
   #prec 10
-  BExpression` efun fail. efun value.
-    (#if (#equal value #nil)
+  BExpression` efun fail. efun val.
+    (#if (#equal val #nil)
        (fun _. fail #unit)
        (fun _. #unit);
      defAfter headValue = #head value;

@@ -1,0 +1,59 @@
+function factorial(n)
+  if n == 0 then
+    return 1
+  elseif n == 1 then
+    return 1
+  end
+  return n * factorial(n - 1)
+end
+
+function fib(n)
+  local a = 0
+  local b = 1
+  local temp
+  for i = 1, n-1 do
+    temp = b
+    b = a + b
+    a = temp
+  end
+  return b
+end
+
+function foo(n)
+  print("foo")
+  print(n)
+  if n == 0 then
+    return
+  end
+  bar(n-1)
+end
+
+function bar(n)
+  print("bar")
+  print(n)
+  if n == 0 then
+    return
+  end
+  foo(n-1)
+end
+
+function print(x)
+  #debug(x)
+end
+
+function patCheck(1, 2, 3)
+  #debug("passed")
+end
+
+print(factorial(4))
+
+foo(4)
+
+for n = 1,10 do
+  print("fib")
+  print(n)
+  print(fib(n))
+end
+
+patCheck(1, 2, 3)
+patCheck(2, 2, 3) // will crash since the pattern fails to match
