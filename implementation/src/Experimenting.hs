@@ -6,7 +6,7 @@ import Control.DeepSeq (NFData, force)
 import Data.Time (getCurrentTime, diffUTCTime)
 
 import Control.Exception (evaluate)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, foldM)
 import Control.Applicative (empty)
 import Control.Arrow ((&&&))
 import Data.Char (generalCategory)
@@ -63,23 +63,21 @@ main = do
 
 normalOperations :: IO ()
 normalOperations = do
-  [startSym, coreGrammar, grammar, source] <- filter (not . isOption) <$> getArgs
+  startSym : coreGrammar : rest <- filter (not . isOption) <$> getArgs
+  let Just (grammars, source) = unsnoc rest
   ignoreExpansionCheckingFailure <- hasOption "--ignore-expansion-check"
   putStrLn "\nParsing coreGrammar"
   coreConstructions <- getConstructions noImpl coreGrammar
   putStrLn "\nResolving core Constructions"
   resolvedCoreConstructions <- resolveConstructions coreConstructions
-  putStrLn "\nParsing grammar"
-  constructions <- getConstructions (implementationGrammar coreConstructions) grammar
-  putStrLn "\nResolving Constructions"
-  resolvedConstructions <- resolveConstructions constructions
-  let allResolvedConstructions = M.union resolvedConstructions resolvedCoreConstructions
+  (allConstructions, (langConstructions, allResolvedConstructions))
+    <- foldM grammar (coreConstructions, (coreConstructions, resolvedCoreConstructions)) grammars
   putStrLn "\nChecking Implementations"
-  implCheck ignoreExpansionCheckingFailure constructions allResolvedConstructions
+  implCheck ignoreExpansionCheckingFailure allConstructions allResolvedConstructions
   putStrLn "\nParsing source"
-  node <- ambiguityParse constructions startSym source
+  node <- ambiguityParse langConstructions startSym source
   putStrLn "\nResolving source"
-  node <- resolveSource resolvedConstructions node
+  node <- resolveSource allResolvedConstructions node
   putStrLn . prettyShow $ node
   putStrLn "\nExpanding source"
   let coreEProgram = fullExpansion allResolvedConstructions node
@@ -100,6 +98,14 @@ benchOperations = do
   fragment <- readFile fragmentFile >>= evaluate . force
   let testPrograms = iterate (fragment ++) fragment
   benchmark startSym coreGrammar grammar testPrograms
+
+grammar :: (_, (_, _)) -> FilePath -> IO (_, (_, _))
+grammar (constrs, (_, resConstrs)) path = do
+  putStrLn $ "Parsing " ++ path
+  constructions <- getConstructions (implementationGrammar constrs) path
+  putStrLn $ "Resolving " ++ path
+  resolvedConstructions <- resolveConstructions constructions
+  return (M.union constrs constructions, (constructions, M.union resConstrs resolvedConstructions))
 
 resolveSource :: Gen pre => M.Map String ResolvedConstruction -> FixNode NoSplice pre -> IO (FixNode NoSplice GenSym)
 resolveSource resolvedConstructions node = case resolveNames resolvedConstructions node of
@@ -222,3 +228,10 @@ benchAction ret = do
   return ret
 
   -- TODO: it is annoying to give header everytime, and engineering formatting might be annoying for google sheets, if that is what I'll use
+
+unsnoc :: [a] -> Maybe ([a], a)
+unsnoc = foldr go Nothing
+  where
+    go x mxs = Just (case mxs of
+       Nothing -> ([], x)
+       Just (xs, e) -> (x:xs, e))
