@@ -38,7 +38,9 @@
 \titlepage
 
 \begin{abstract}
-TBW
+This thesis introduces syntax constructions as a method of constructing programming languages out of smaller language features, permitting reuse through cherry-picking single features from other languages. They are similar to macros, but with greater syntactical freedom than those found in most languages (e.g. Lisp), and extra annotations specifying their binding semantics. These annotations are then used to allow full name resolution before macro-expansion, along with a check to ensure that no syntax construction can introduce a new binding error trough its expansion. This means that error messages pertaining to name binding are presented in terms of code the programmer actually wrote, instead of code generated through several layers of macro-expansions.
+
+Syntax constructions also use syntactical ambiguity as a feature through informative error messages, but the tools provided to control the ambiguity and where it appears prove insufficient. Ultimately syntax constructions represent a step towards a certain user experience in creating new programming languages, but are themselves not the desired solution.
 \end{abstract}
 
 
@@ -54,8 +56,6 @@ Kommer så småningom
 
 % Mainmatter is where the actual contents of the thesis goes
 \mainmatter
-
-% TODO: we now support "keywords", which changes a bunch of things that have already been written, which must be checked
 
 \chapter{Introduction} \label{sec:introduction}
 
@@ -204,7 +204,7 @@ Such restrictions simplify parsing the language, since it ensures the grammar is
 
 % TODO: not sure this section is written in quite the right way to be in the introduction, was merely moved from a discussion part at the end of the thesis
 
-When designing a grammar to describe the syntax of a programming language ambiguity tends to be an undesirable property. There are multiple reasons for this, for example some efficient algorithms require an unambiguous grammar (TODO: ref), or one might consider the possibility of encountering code that, while syntactically correct, does not have a well defined meaning is a bad thing.
+When designing a grammar to describe the syntax of a programming language ambiguity tends to be an undesirable property. There are multiple reasons for this, for example an unambiguous grammar may be faster to parse (e.g. \cite{Earley1970An-Efficient-Co} has a better worst case for unambiguous grammars), or one might consider the possibility of encountering code that, while syntactically correct, does not have a well defined meaning as a bad thing.
 
 I would however argue that there is a place for ambiguity in programming language grammars, if we presuppose that code is read more often than it is written. Consider the expression \mintinline{python}{1 & 3 == 1}, where \mintinline{python}{&} is bitwise ''and'' and \mintinline{python}{==} is equality. The result of the expression depends on the relative precedence of the two operators. Thus a reader can know the precise semantics of all operators and values involved, and still not know what the code does.
 
@@ -339,7 +339,6 @@ The system works through a rewriting of derivation trees, not pure syntax, thus 
 
 Copper \cite{Van-Wyk2007Context-aware-s} and Silver \cite{Van-Wyk2010Silver:-An-exte} together form a system for extensible languages based on attribute grammars. Copper defines a grammar and a lexical scanner that work in tandem, where the scanner only returns tokens that the grammar defines as valid next tokens given the current state of the parse. The combination manages to parse more languages, since the scanner can work unambiguously in more cases. Silver allows modular language extensions on some host language, all of them defined using attribute grammars, along with some guarantees on their behaviour under composition \cite{Kaminski2017Reliably-compos}.
 
-% TODO: The sentiment is correct here, but the exact title feels a bit weird linguistically
 \chapter{Design of Syntax Constructions} \label{sec:syntax-constructions}
 
 This section details the design and motivations behind syntax constructions, the main product of this thesis. Syntax constructions are macros, similar to those in various Lisps, but with additional guarantees and capabilities. Section~\ref{sec:research-question} states the design goals that guide the design in this chapter. Sections \ref{sec:design-syntax} through \ref{sec:design-implementation} use these goals to build syntax constructions, one piece at a time.
@@ -437,8 +436,7 @@ This expansion was chosen to align with the normal definition of operator preced
 
 The subject of precedence bears further elaboration. It is required in some form or other, otherwise a very large class of languages would be inexpressible, e.g. $a + b * c$ would be ambiguous. However, precedence only has meaning when comparing multiple operators to each other, which is in direct conflict with the design goal of only requiring a user to consider each syntax construction in isolation. The current solution is a trade-off and does not require explicit comparison with other constructions, precedence is simply represented as a number, but it does present an implicit dependence on all other syntax constructions of the same syntax type. Other options might include explicitly stating one syntax construction as preferred over another, similar to SDF \cite{Heering1989The-syntax-defi}.
 
-% TODO: I'm having a hard time finding a reference for undecidability, since most papers merely see it as a well-known fact
-A reader with previous experience of context free grammars may have some qualms at this point; if the syntactical part of syntax constructions is just context free grammars with some rewriting help, won't ambiguous grammars be an issue? Context free grammars are not unambiguous in the general case, and in fact, determining if a context free grammar is ambiguous is undecidable in general. As such, syntax constructions provide no static guarantees on ambiguity, but provides good error messages when ambiguous code is encountered. See sections \ref{sec:implementation-ambiguity-detection} and \ref{sec:errors-ambiguous} for implementation and evaluation of these errors, respectively, and sections \ref{sec:functional-eval} (specifically p.~\pageref{sec:ambiguous-lists}) and \ref{sec:imperative-eval} (specifically p.~\pageref{sec:lua-func-call-precedence}), amongst others, for consequences and evaluation.
+A reader with previous experience of context free grammars may have some qualms at this point; if the syntactical part of syntax constructions is just context free grammars with some rewriting help, won't ambiguous grammars be an issue? Context free grammars are not unambiguous in the general case, and determining whether a given grammar is ambiguous is not always obvious. Syntax constructions provide no static guarantees on ambiguity, but provides good error messages when ambiguous code is encountered. See sections \ref{sec:implementation-ambiguity-detection} and \ref{sec:errors-ambiguous} for implementation and evaluation of these errors, respectively, and sections \ref{sec:functional-eval} (specifically p.~\pageref{sec:ambiguous-lists}) and \ref{sec:imperative-eval} (specifically p.~\pageref{sec:lua-func-call-precedence}), amongst others, for consequences and evaluation.
 
 \section{Bindings} \label{sec:design-bindings}
 
@@ -577,7 +575,6 @@ syntax match:Expression =
 
 In this case however we want a scope per arm, as names bound by a \mintinline{syncon}{pattern} should only be available in the corresponding \mintinline{syncon}{body}. Changing the scope declaration to \mintinline{syncon}{#scope arm:(pattern body)} describes exactly that: create one scope per repetition of \mintinline{syncon}{arm} containing only the occurrences of \mintinline{syncon}{pattern} and \mintinline{syncon}{body} within that repetition.
 
-% TODO: need consistent terminology for things (expression is used to mean node sometimes, but Expression is commonly used for a different meaning, is probably not a very good thing.)
 \section{Expansion} \label{sec:design-implementation}
 
 Syntax constructions, being essentially macros, need a way to specify how they expand into whatever underlying language they are implemented on top of. Additionally, the goal of abstraction preservation requires that the implementation of a syntax construction is never exposed to an end user. As such, the expansion must never fail or produce a malformed program.
@@ -719,7 +716,6 @@ This preservation of reference is done by ensuring that each symbol present in t
 
 Binding symbols are kept unique by having name resolution replace each symbol with a newly generated, unique symbol in both binding and referencing positions. Since an expansion may use a syntactical element twice or more each expansion may need a new name resolution pass. This pass is guaranteed to succeed, as per the guarantees mentioned above, and is only necessary to generate new symbols.
 
-% TODO: I'm currently intending to split things a bit differently, this section should be the design and intended semantics, not necessarily how it is done, while the implementation chapter should contain how all the things are actually done.
 
 \subsection{Disambiguation in Expansion Parsing} \label{sec:disambiguation-implementation}
 
@@ -1259,9 +1255,6 @@ The evaluation of this thesis is largely empirical and based on case studies fac
 
 The actual evaluation consists of case studies of expressibility (Section~\ref{sec:case-studies}), reuse of language feature from one language in another (Section~\ref{sec:language-composition}), a brief examination of the correctness of the implementations in the case studies (Section~\ref{sec:correctness-and-performance}), a few performance metrics of the implementation (Section~\ref{sec:performance}), and finally an examination of the errors presented to a user when something goes wrong (Section~\ref{sec:error-reporting}).
 
-% TODO: introduce the different aspects of evaluation: expressibility and intuitiveness of expressibility in first two sections (with mention of validation), then composability in next 1-2 sections, a (probably short) performance section.
-% Things not present in list above that need to be incorporated somewhere: error reporting (i.e. preservation of abstraction), move properties here?, discussion on expressiveness independent of language? (to explore inexpressible, but uncommon/unlikely features)
-
 For evaluation two programming languages have been implemented: a subset of Lua and a subset of OCaml. The former evaluates the expressibility of a relatively standard imperative language, while the latter evaluates the expressibility of  a relatively standard functional language, with an extra focus on pattern matching.
 
 For each of the languages a few interesting features are discussed, including their implementation, along with several weaknesses of the system.
@@ -1502,6 +1495,9 @@ Note that the implementation is somewhat naive, for example no work is shared be
 % TODO: not neutral, not objective
 The inability to express patterns in syntax constructions without the presence of an unsound construction in the core language (\mintinline{syncon}{efun}) signals a clear flaw in the method. The syntax descriptions and binding specifications on the other hand are clear and concise and may be considered a success.
 
+\subsubsection{Patterns in Function Declarations}
+\label{sec:ocaml-function-argument-patterns}
+
 Patterns are however not limited only to the \mintinline{ocaml}{match} expression in OCaml, they can additionally be used in function definitions. The most common way of writing such a function uses \mintinline{ocaml}{let} with some syntax sugar to allow writing all the arguments next to the function name, instead of as part of nested \mintinline{ocaml}{fun} expressions. The two definitions below are equivalent, and we would like our OCaml subset to support both.
 
 \begin{minted}{ocaml}
@@ -1605,27 +1601,13 @@ syntax sequentialComposition:Expression =
 
 The resulting composed syntax is ambiguous however: a list literal of length greater than one will never be parsed unambiguously, there is nothing to distinguish the item separators from the sequential composition operator. The OCaml parser special cases this, parsing \mintinline{ocaml}{[1;2;3]} as a list of three elements and \mintinline{ocaml}{[(1;2;3)]} as a list of one element.
 
-Syntax constructions can implement this, but not in a convenient fashion.
+Syntax constructions can implement this, but not in a convenient fashion. A first, almost convenient, approach would be to create a new syntax type, \mintinline{syncon}{Statement}, moving sequential composition to it and creating a new syntax construction consisting of a single \mintinline{syncon}{Expression}. This allows us to state when we want an expression including sequential composition (\mintinline{syncon}{Statement}) or excluding sequential composition (\mintinline{syncon}{Expression}). Most previous uses of \mintinline{syncon}{Expression} would now instead be \mintinline{syncon}{Statement}, except list literals.
 
-TODO
-% If we introduce a new syntax type, \mintinline{syncon}{Statement}, as an expression that may be a sequential composition, and use it in most cases where we would otherwise put \mintinline{syncon}{Expression}:
+The first issue with this solution is partially that it is a workaround that requires changes in many places that very much requires each syntax construction to be considered in its context (thus breaking a design goal). The second issue is that it does not work: the original \mintinline{syncon}{Expression} contains syntax constructions with both lower and higher precedence than sequential composition. The rewrite above essentially gives sequential composition lower precedence than all constructions in \mintinline{syncon}{Expression}, thus altering how the language is parsed.
 
-% % TODO: put actual results of making this change in a different language definition for ocaml
-% \begin{minted}{syncon}
-% syntax type Statement = Expression
+A proper solution might instead require three syntax types: \mintinline{syncon}{ExpressionWith}, \mintinline{syncon}{ExpressionWithout}, and \mintinline{syncon}{ExpressionBase}. The last contains the syntax constructions that were in \mintinline{syncon}{Expression} with higher precedence than sequential composition, while the first two contain duplicates of the remaining syntax constructions, except for sequential composition, which is only present in \mintinline{syncon}{ExpressionWith}.
 
-% syntax sequentialComposition:Statement =
-%   e1:Statement ";" e2:Statement
-% {
-%   #assoc right
-%   #prec 2
-%   <...>
-% }
-
-% syntax normalExpression:Statement = e:Expression {
-%   e
-% }
-% \end{minted}
+This solution seems inconvenient enough to not really consider a solution, instead seeing at as a sign of a weakness with syntax constructions as presented in this thesis.
 
 \subsection{An Imperative Language - Lua Subset} \label{sec:imperative-eval}
 
@@ -1989,10 +1971,35 @@ The former approach immediately runs into problems because of the second point a
 
 In general, this problem will appear any time we wish to include a syntax construction that is recursive, i.e. that uses its own syntax type in the syntax description. % TODO: mention something about how to solve long term
 
-The alternative reuse option is to create a new syntax construction that expands into a \mintinline{ocaml}{match}.
-% TODO: continue
+The alternative reuse option is to create a new syntax construction that expands into a \mintinline{ocaml}{match}, i.e. to follow the tower of languages approach:
 
-TODO
+\begin{minted}{syncon}
+syntax luaMatch:Statement =
+  "match" e:Expression "with"
+  arms:("case" p:Pattern ":" b:Block)+
+  "end"
+{
+  #scope (e)
+  #scope arms:(p b)
+  BExpression` efun return. efun break.
+    (defAfter e = #deref `t(e);
+     `t(foldr arms next
+          (Expression` match e with
+            | `t(p) -> `t(b) return break
+            | _ -> `t(next))
+          (BExpression` #crash)))
+}
+\end{minted}
+
+This syntax construction expands into a nested series of \mintinline{ocaml}{match} expressions from OCaml and can be used like so:
+
+\begin{minted}{lua}
+match 4 with
+  case 1: print(1)
+  case 2: print(2)
+  case n: print("n")
+end
+\end{minted}
 
 \section{Correctness} \label{sec:correctness-and-performance}
 
@@ -2188,9 +2195,7 @@ However, ambiguity is generally a property of a set of syntax constructions, not
 
 This is analogous to integration tests in a dynamically typed language; a new system (i.e. a new composition of sub-systems) require new integration tests. Regular programming languages additionally tend to have unit tests, which compose somewhat better and give some confidence in the correctness of the composition. Thus testing for a dynamically typed programming language is likely to scale better than testing for ambiguity with syntax constructions.
 
-Static ambiguity detection, i.e. compile-time checking, would likely scale better, since it would be automatic and ideally complete for each language without extra work for the language designer. The problem is that it is impossible; determining if a given context-free grammar is ambiguous is undecidable in the general case.
-
-% Several approaches could be adopted to circumvent this. There are a few heuristics (TODO: expand, ref). The grammars generated by syntax constructions could be constrained to a limited sub-set of context-free grammars where the ambiguity problem is decidable. TODO: write more and better here after some reference checking.
+Static ambiguity detection on the other hand, i.e. compile-time checking, would likely scale better, since it would be automatic and ideally complete for each language without extra work for the language designer. This thesis makes no attempt at determining the ambiguity of a language, instead leaving such an approach for future work.
 
 \subsection{Expansion Specification Errors}
 
@@ -2296,8 +2301,7 @@ No binding errors can be encountered during expansion of syntax construction, no
 
   Future work must here come in two different, but related flavors:
   \begin{itemize}
-    % TODO: ref on undecidable
-    \item Control of where ambiguity appears. This requires static analysis of the grammar, which in the general case is is undecidable for a context free grammar. The question then becomes if a heuristic is sufficient, or if some more restricted form of grammar can support the desired workflow of defining the syntax of each syntax construction separately.
+    \item Control of where ambiguity appears. This requires static analysis of the grammar, which in the general case is is undecidable for a context free grammar \cite{Cantor1962On-The-Ambiguit}. The question then becomes if a heuristic is sufficient, or if some more restricted form of grammar can support the desired workflow of defining the syntax of each syntax construction separately.
 
     % TODO: the suggested future work things here might not be well described, and might be too specific? Should they truly be here in this fashion?
     \item Tools to remove or add ambiguity. Precedence as a number easily turns unwieldy, and turns out to be insufficiently flexible (e.g. see p.~\pageref{sec:ambiguous-lists}). Disallowing specific syntax constructions from appearing in certain positions would solve this particular problem (the expressions in a list literal cannot be sequential composition), and may prove to be a more flexible tool.
@@ -2312,7 +2316,13 @@ No binding errors can be encountered during expansion of syntax construction, no
 
 \section{Conclusion}
 
-This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages. From a subjective point of view the experience of using syntax constructions to define languages was pleasant when things were working, and the error messages were informative when they did not, but fixing the problems was frequently painful. Syntax constructions do not live up to the goals initially presented, but they do provide a reasonable first step.
+This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages. From a subjective point of view the experience of using syntax constructions to define languages was pleasant when things were working, and the error messages were informative when they did not, but fixing the problems was frequently painful.
+
+Ambiguity control in particular was insufficient, the controls available for the purpose had unintended side-effects (precedence in function calls in Lua, see p.~\pageref{sec:lua-func-call-precedence}) or could not solve the issue at all, requiring large amounts of duplication (lists in OCaml, see p.~\pageref{sec:ambiguous-lists}).
+
+Specifying binding semantics worked well however, with the exception of requiring us to deal with a case we would rather forbid (function argument patterns in OCaml, see p.~\pageref{sec:ocaml-function-argument-patterns}).
+
+Syntax constructions do not live up to the goals initially presented, but they do provide a reasonable first step.
 
 \printbibliography[heading=bibintoc]
 
