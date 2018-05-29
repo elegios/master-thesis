@@ -17,8 +17,8 @@
 
 \usepackage{hyperref}
 
-\title{Compositional Programming Language Design}
-\alttitle{Detta är den svenska översättningen av titeln}
+\title{Building Programming Languages, Construction by Construction}
+\alttitle{Att bygga programmeringsspråk, konstruktion för konstruktion}
 \author{Viktor Palmkvist}
 \email{vipa@kth.se}
 \supervisor{David Broman}
@@ -38,7 +38,7 @@
 \titlepage
 
 \begin{abstract}
-This thesis introduces syntax constructions as a method of constructing programming languages out of smaller language features, permitting reuse through cherry-picking single features from other languages. They are similar to macros, but with greater syntactical freedom than those found in most languages (e.g. Lisp), and extra annotations specifying their binding semantics. These annotations are then used to allow full name resolution before macro-expansion, along with a check to ensure that no syntax construction can introduce a new binding error trough its expansion. This means that error messages pertaining to name binding are presented in terms of code the programmer actually wrote, instead of code generated through several layers of macro-expansions.
+This thesis introduces syntax constructions as a method of constructing programming languages as a set of language features, permitting reuse through cherry-picking single features from other languages. They are similar to macros, but with greater syntactical freedom than those found in most languages (e.g. Lisp), and extra annotations specifying their binding semantics. These annotations are then used to allow full name resolution before macro-expansion, along with a check to ensure that no syntax construction can introduce a new binding error trough its expansion. This means that error messages pertaining to name binding are presented in terms of code the programmer actually wrote, instead of code generated through several layers of macro-expansions.
 
 Syntax constructions also use syntactical ambiguity as a feature through informative error messages, but the tools provided to control the ambiguity and where it appears prove insufficient. Ultimately syntax constructions represent a step towards a certain user experience in creating new programming languages, but are themselves not the desired solution.
 \end{abstract}
@@ -46,7 +46,9 @@ Syntax constructions also use syntactical ambiguity as a feature through informa
 
 \begin{otherlanguage}{swedish}
 \begin{abstract}
-Kommer så småningom
+Denna avhandling introducerar syntax-konstruktioner, en metod för att konstruera programmeringsspråk som en samling mindre konstruktioner. Detta gör det möjligt att återanvända enstaka konstruktioner från redan implementerade språk. Syntax-konstruktioner liknar macron, men med större syntaktisk flexibilitet och ett sätt att specificera hur de interagerar med namnbindning. Det sistnämnda möjliggör analys av namnbindningar utan att expandera macron och ett sätt att kontrollera att en given macro aldrig introducerar namnbindningsfel. Detta medför att när felmeddelanden behöver presenteras så kan de referera till kod som en användare faktiskt skrivit, istället för kod som genererats vid expandering.
+
+Syntax-konstruktioner låter en användare skapa syntaktisk ambiguitet i sitt programmeringsspråk och försöker få en bra användarupplevelse med hjälp av informativa felmeddelanden. De verktyp som tillhandahålls för att kontrollera detta visar sig dock vara otillräckliga, vilket medför att syntax-konstruktioner i sig själva inte är en tillräcklig lösning för den tilltänkta användarupplevelsen vid programspråkskonstruktion, utan enbart ett steg på vägen.
 \end{abstract}
 \end{otherlanguage}
 
