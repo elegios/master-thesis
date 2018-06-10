@@ -12,10 +12,15 @@
 \usepackage{algpseudocode}
 
 \usepackage{csquotes} % Recommended by biblatex
-\usepackage{biblatex}
+\usepackage[doi=false,url=false]{biblatex}
 \addbibresource{references.bib} % The file containing our references, in BibTeX format
 
 \usepackage{hyperref}
+
+\newmintinline[syncon]{syncon}{}
+\setminted{
+frame=single
+}
 
 \title{Building Programming Languages, Construction by Construction}
 \alttitle{Att bygga programmeringsspråk, konstruktion för konstruktion}
@@ -26,6 +31,7 @@
 \programme{Master in Computer Science}
 \school{School of Computer Science and Communication}
 \date{\today}
+
 
 \raggedright
 % \setlength{\parindent}{1.5em}
@@ -61,28 +67,14 @@ Syntax-konstruktioner låter en användare skapa syntaktisk ambiguitet i sitt pr
 
 \chapter{Introduction} \label{sec:introduction}
 
-% TODO: list of examples of "a wide array of problems"
-The computational power of a modern computer makes it an attractive tool to apply to a wide array of problems. Their power does not come with intelligence however (advancement in machine learning notwithstanding), the machine merely does what it is told, no more, and no less. This becomes a problem because the instructions that a computer understands are very basic, things like arithmetic, comparisons and bit-twiddling, not the high level concepts we as humans would use to consider problems.
+% discuss embedded DSL, external DSL, costs, weaknesses, probably reusability (?)
+% probably start from general-purpose vs domain-specific
 
-Enter programming languages: languages designed to be written by a human and then translated into instructions understood by a machine. These immediately elevate our ability to instruct a computer using more high level concepts, bringing the discourse somewhat closer to that of the problems we wish to solve.
+This thesis takes a different approach: syntax constructions center around singular language constructs, such as if-statements, anonymous functions, or patterns used in pattern matching. The language designer defines a syntax construction representing one of these, describing its syntax, its binding semantics, and its runtime semantics. The runtime semantics are specified in terms of a translation to another programming language, and this translation is checked to ensure that it always preserves the binding semantics.
 
-Most programming languages in use are so-called general purpose programming languages, languages intended to be useful for any kind of computation. Common examples include C, Java, and Python. Their generality and freedom are their strength and their weakness; they can solve many problems, but those solutions require much in ways of code. Just like machine code deals with largely arithmetic operations, general purpose programming languages deal with data structures and expressing algorithms; they deal with computer science.
+This enables creating new programming languages by cherry-picking individual features from previous languages, i.e., it enables reuse of a single language feature as opposed to an entire language. The unit of composition is a feature, not a language.
 
-The problems we wish to solve might not reside in the domain of computer science however, we might be solving something in e.g. biology, physics, or science. A general purpose programming language requires that the solution uses terms from computer science, not the problem domain.
-
-There is an alternative here of course: a programming language that is not general purpose but instead domain specific. Such a language is naturally far less generally applicable, but it allows stating the solution in the same domain as the problem. This is likely to make it easier to solve the problem, and limits repeated work; the implementation of the programming language can solve many of the computational aspects and efficiency problems once, instead of requiring each solution in the same domain to re-solve these peripheral problems.
-
-So a domain specific language can make it easier to solve the problem at all, and on top of that do it more efficiently. What is the catch? In some cases there might not be one, but more frequently at least one of three things is true:
-
-\begin{itemize}
-  \item There is no language for the given domain.
-  \item There is no well-designed language for the given domain.
-  \item There is no well-implemented language for the given domain.
-\end{itemize}
-
-The reason is simple: making a programming language is a lot of hard work. It requires a wealth of computer science knowledge and engineering to provide a good implementation and a usable tool, but it also requires a wealth of knowledge of the problem domain to design a good language. The work required to create a good language to solve many problems with is---with a very, very high likelihood---much more work than solving any one of those problems individually.
-
-We wish it were not so, and thus much research has been done in the area of making domain specific languages. This thesis in particular builds on the foundation of macros as a method of creating domain specific languages.
+For a reader familiar with macros, syntax constructions extend macros with greater syntactical flexibility and the ability to reason about bindings without macro expansion (for the reader not familiar with macros, they are explained in Section~\ref{sec:introduction-macros}).
 
 The remainder of this introduction will provide additional context and motivation for the thesis and the associated approach (Sections \ref{sec:compiler-design} through \ref{sec:desired-ambiguity}), a more precise problem statement (Section~\ref{sec:research-question}), and a list of contributions (Section~\ref{sec:contributions}).
 
@@ -100,7 +92,7 @@ Despite this there are some quite successful cases of language implementation re
   \item[JVM] A large number of programming languages exists that can compile to Java bytecode, enabling them to reuse the implementation originally intended for Java. Examples include Scala, Clojure and Kotlin. Other languages have the JVM as an additional backend, for example Ruby (JRuby) and Python (Jython). % TODO: refs
   \item[JavaScript] Many languages can compile to JavaScript, thus reusing the entire language while adding something new on top. Examples include TypeScript (essentially JavaScript with static types), CoffeeScript (alternative syntax for JavaScript), and Elm (statically typed language with JavaScript as a compile target).
   \item[OCaml] ReasonML replaces the parser and surrounding tooling of OCaml, providing a different syntax to what is otherwise the same language.
-  \item[LLVM] The LLVM project (previously an acronym for low level virtual machine, now a name all by itself) defines an intermediate representation that can be used both as a target for a language and as a source for translation into machine code. This allows changing either frontend or backend while reusing the other, as well as a large number of optimizations defined on the intermediate representation. Languages using LLVM either by default or as part of an alternative backend include C, C++, Rust, and Haskell. Examples of instruction sets to which LLVM intermediate representation can be translated include x86, x86-64, ARM, and PowerPC.
+  \item[LLVM] The LLVM project (previously an acronym for ''low level virtual machine,'' now a name all by itself) defines an intermediate representation that can be used both as a target for a language and as a source for translation into machine code. This allows changing either frontend or backend while reusing the other, as well as a large number of optimizations defined on the intermediate representation. Languages using LLVM either by default or as part of an alternative backend include C, C++, Rust, and Haskell. Examples of instruction sets to which LLVM intermediate representation can be translated include x86, x86-64, ARM, and PowerPC.
 \end{description}
 
 Somewhat simplified, the key common characteristic of these examples is that the reused part tends to be from somewhere in the middle until the end of the original implementation; the replaced part has the first few phases, then all remaining phases are from the original implementation. No one only replaces a few phases in the middle.
@@ -109,15 +101,15 @@ While this does allow reuse of large chunks of an implementation, much still has
 
 We would ideally like to have more flexible forms of reuse, enabling reuse of singular language features, and not requiring reimplementation of name resolution and many other common tasks beyond specifying the particular details of the current language.
 
-\section{Macros}
+\section{Macros} \label{sec:introduction-macros}
 
-A macro in a programming language context is a piece of syntax with a translation into some other syntax. This translation is specified by a user of the language as opposed to the original language implementer, which gives an opportunity to define new syntactical constructs and languages without having to change the language implementation or make a new language entirely.
-
-To be a bit more concrete, the following example is in Racket\cite{Flatt2010Reference:-Rack}, a dialect of lisp:
+From a practical viewpoint, a macro is essentially syntax that appears as though it were built in to the programming language, but is in fact defined by a user through a translation to some other syntax. The following example is in Racket~\cite{Flatt2010Reference:-Rack}, a Lisp dialect:
 
 % TODO: check that the example code is actually correct and runnable
 \begin{minted}{racket}
-; This is a shortcutting 'and', i.e. 'b' will
+; define-syntax-rule introduces a new macro,
+; in this case with the name 'and'.
+; This is a shortcutting 'and', i.e., 'b' will
 ; only be evaluated if 'a' is true
 (define-syntax-rule (and a b)
   (if a b #f))
@@ -131,27 +123,41 @@ To be a bit more concrete, the following example is in Racket\cite{Flatt2010Refe
 ; was not evaluated
 \end{minted}
 
-This would not be possible to implement as a function in Racket since functions require their arguments to be fully evaluated before they are called, i.e. the second argument would be evaluated before \mintinline{racket}{and}, regardless of the value of the first argument.
+This would not be possible to implement as a function in Racket since functions require their arguments to be fully evaluated before they are called, i.e., the second argument would be evaluated before \mintinline{racket}{and}, regardless of the value of the first argument.
 
-This particular example shows a simple example where the arguments of the macro are simply inserted into a form of template, but macros in general can be far more complex and powerful. Macros can utilize recursion as well as the full power of lisp, i.e. a macro in general is a function from syntax to syntax that runs at compile-time.
+This particular example shows a simple example where the arguments of the macro are simply inserted into a form of template, but macros in general can be far more complex and powerful. Macros can utilize recursion as well as the full power of Lisp, i.e., a macro in general is a function from syntax to syntax that runs at compile-time.
 
-The expressive power provided here is great; any arbitrary computation can be done at compile time, for example type checking (typed racket \cite{Tobin-Hochstadt:2011:LL:1993498.1993514}), destructuring and pattern matching (Clojure, standard library\footnote{https://github.com/clojure/clojure/blob/master/src/clj/clojure/core.clj} and external library\footnote{https://github.com/clojure/core.match} respectively), and coroutines (Clojure\footnote{https://github.com/clojure/core.async}). Racket (which was used in the example above) takes this one step further and describes itself as an ''ecosystem for developing and deploying new languages'', all of which is powered by its macro system.
+The expressive power provided here is great; any arbitrary computation can be done at compile time. Examples include type checking (typed racket \cite{Tobin-Hochstadt:2011:LL:1993498.1993514}), destructuring and pattern matching (Clojure, standard library\footnote{https://github.com/clojure/clojure/blob/master/src/clj/clojure/core.clj} and external library\footnote{https://github.com/clojure/core.match} respectively), and coroutines (Clojure\footnote{https://github.com/clojure/core.async}). Racket (which was used in the example above) takes this one step further and describes itself as an ''ecosystem for developing and deploying new languages'', all of which is powered by its macro system.
 
-There are some drawbacks however, and we will spend the next few sections examining some of them.
+There are some drawbacks, however, and we will spend the next few sections examining some of them.
 
 \subsection{Problems of Abstraction} \label{sec:problem-abstraction}
 
-The abstractions provided by macros can easily become leaky abstractions without special care.
+% TODO: pick only one of these. the last is closest to the fix that was suggested
+If we are to use macros to implement an domain-specific language we would like them to provide proper abstractions. In particular, we want them to not be ''leaky'', in the sense that their implementation should never become apparent to a user, they should behave as though they are true, first-class constructs in the language, and a user should be able to reason about them without knowing their implementation.
+
+For our purposes, we would like macros to provide abstractions
+
+As presented above, we would like to use macros to provide abstractions that appear as though
+
+The abstractions provided by macros can easily become leaky abstractions without special care. A leaky abstraction may in some cases expose its implementation to a user, or it may be impossible to reason about it properly without knowing its implementation.
+
+The abstractions provided by macros can easily become leaky abstractions without special care. By leaky abstraction we mean an abstraction that might in some case expose its implementation to a user, or one that cannot be reasoned about correctly without knowing its implementation.
 
 \subsubsection{Name Capture}
 
-A naive macro expander using textual replacement will introduce accidental name capture. For example, given the following macro (using Racket syntax) intended to calculate $a + a + b$ while computing $a$ only once:
+A naive macro expander using textual replacement can introduce accidental name capture. For example, given the following macro (using Racket syntax) intended to calculate $a + a + b$:
 
 \begin{minted}{racket}
 (define-syntax-rule (double-add a b)
+; let introduces a new binding, in this case
+; 'x' is bound to the value of evaluating 'a'
   (let ([x a])
     (+ x x b)))
 \end{minted}
+
+The extra \mintinline{racket}{let}-binding is there to ensure we only compute \mintinline{racket}{a} once. Macros are expanded at compile-time and receives its arguments as expressions, i.e., they are not values, but rather computations that produce values. The more obvious implementation, \mintinline{racket}{(+ a a b)}, would
+compute \mintinline{racket}{a} twice.
 
 The following expression will exhibit accidental name capture when macro expansion uses pure textual replacement:
 
@@ -163,14 +169,14 @@ The following expression will exhibit accidental name capture when macro expansi
   (let ([x 1])
     (+ x x x)))
 ; which evaluates to
-3
+(+ 1 1 1) = 3
 ; while our intended semantics would evaluate to:
-4
+(+ 1 1 2) = 4
 \end{minted}
 
 Notable here is that the above would not produce an error of any kind, the result would simply be silently wrong.
 
-Most macro systems will avoid this problem through various forms of rewriting or more complicated forms of name resolution (e.g. \cite{FLATT2012Macros-that-Wor,Flatt2016Binding-As-Sets}), a notable exception being the C preprocessor that makes no such attempt.
+It is worth noting here that Racket solves this problem, as do most other macro systems, through rewriting or more complicated forms of name resolution (e.g. \cite{FLATT2012Macros-that-Wor,Flatt2016Binding-As-Sets}). A notable exception is the C preprocessor that makes no such attempt.
 
 \subsubsection{Errors after Expansion}
 
@@ -194,25 +200,27 @@ Here we define a new binding construction, but misuse it; the identifier and the
 
 The error exposes the implementation of the macro. The generated code may be introduced through several layers of macro expansion and can be quite complicated, making the connection between the error message and the actual error even less clear.
 
-In a statically typed language this problem has an additional form: type errors after macro expansion.
+In a statically typed language this problem has an additional form: type errors after macro expansion. A macro might expand to code that is incorrect in the sense that it has type errors. Considering this case is important, as one of the strengths of a statically typed language is the dialog between the programmer and the typechecker: the programmer writes code that is wrong, and the typechecker provides guidance on what to fix in the form of error messages. If these error messages refer to the expansion and not the original code, then the guidance is very hard to follow.
+
+This thesis does not address types, but rather leaves them for future work.
 
 \subsection{Problems of Syntax} \label{sec:problem-syntax}
 
-One advantage of macros is their ability to essentially introduce syntactic sugar to a language at a user level. Despite this most commonly used macro systems place some fairly strict limits on the newly introduced syntax. For example, a C preprocessor macro must be an identifier, possibly followed by an argument list, and a lisp macro must be a list of valid forms started by a symbol.
+One advantage of macros is their ability to essentially introduce syntactic sugar to a language at a user level. Despite this, most commonly used macro systems place some fairly strict limits on the newly introduced syntax. For example, a C preprocessor macro must be an identifier, possibly followed by an argument list, and a Lisp macro must be a list of valid forms, started by a symbol.
 
-Such restrictions simplify parsing the language, since it ensures the grammar is fixed and cannot be changed during parsing.
+Such restrictions simplify parsing the language, since it ensures that the grammar is fixed and cannot be changed during parsing.
 
 \section{Desired Ambiguity} \label{sec:desired-ambiguity}
 
 % TODO: not sure this section is written in quite the right way to be in the introduction, was merely moved from a discussion part at the end of the thesis
 
-When designing a grammar to describe the syntax of a programming language ambiguity tends to be an undesirable property. There are multiple reasons for this, for example an unambiguous grammar may be faster to parse (e.g. \cite{Earley1970An-Efficient-Co} has a better worst case for unambiguous grammars), or one might consider the possibility of encountering code that, while syntactically correct, does not have a well defined meaning as a bad thing.
+When designing a grammar to describe the syntax of a programming language ambiguity tends to be an undesirable property. There are multiple reasons for this, for example an unambiguous grammar may be faster to parse (e.g. the Earley parsing algorithm~\cite{Earley1970An-Efficient-Co} has a better worst case for unambiguous grammars), or one might consider the possibility of encountering code that, while syntactically correct, does not have a well defined meaning as a bad thing.
 
-I would however argue that there is a place for ambiguity in programming language grammars, if we presuppose that code is read more often than it is written. Consider the expression \mintinline{python}{1 & 3 == 1}, where \mintinline{python}{&} is bitwise ''and'' and \mintinline{python}{==} is equality. The result of the expression depends on the relative precedence of the two operators. Thus a reader can know the precise semantics of all operators and values involved, and still not know what the code does.
+Instead, this thesis argues that there is a place for ambiguity in programming language grammars, if we presuppose that code is read more often than it is written. Consider the expression \mintinline{python}{1 & 3 == 1}, where \mintinline{python}{&} is bitwise ''and'' and \mintinline{python}{==} is equality. The result of the expression depends on the relative precedence of the two operators. Thus a reader can know the precise semantics of all operators and values involved, and still not know what the code does.
 
 This is of course a tradeoff, the same argument could be made for an expression such as \mintinline{python}{1 + 2 * 3}, yet requiring explicit grouping for all expressions seems excessive. The difference stems from the frequency each operator is used, e.g., most code uses basic arithmetic and logical operators, but bitwise operators are relatively infrequent. The former are also taught early in mathematics, including precedence, thus most programmers would know the exact meaning of \mintinline{python}{1 + 2 * 3} while \mintinline{python}{1 & 3 == 1} would be less obvious.
 
-Worse, the meaning of the latter expression varies by language, even if the languages have the same meaning for the operators. The evaluation of that same expression in C and Python can be seen below.
+Worse, the meaning of the latter expression varies by language, even if the languages have the same meaning for the operators. The evaluation of that same expression in C and Python differs:
 
 \begin{center}
 \begin{tabular}{c|c}
@@ -227,21 +235,18 @@ C & Python \\
 
 Thus a programmer who knows the precedence in one language may read the code, understand the semantics of all operators involved, and yet misunderstand the semantics of the expression.
 
-My suggestion then is the following: if most programmers would agree on the interpretation of some code it should be parsed unambiguously as such. If the correct interpretation is non-obvious then the programmer writing the code should be asked to clarify their intent, most likely by using parentheses for explicit grouping. The latter can be achieved with an ambiguous grammar and good error messages (Section~\ref{sec:errors-ambiguous} shows a good first step towards such error messages).
+This thesis thus suggests the following: if most programmers would agree on the interpretation of some code it should be parsed unambiguously as such. If the correct interpretation is non-obvious then the programmer writing the code should be asked to clarify their intent, most likely by using parentheses for explicit grouping. The latter can be achieved with an ambiguous grammar and good error messages (Section~\ref{sec:errors-ambiguous} shows a good first step towards such error messages).
 
+% TODO: david read this with 'has' referring to the tools, i.e., being wrong in plurality. Probably rewrite for clarity (?)
 The key then is to provide tools with which a language designer has ample control of where ambiguity is surfaced to an end user. This control should deal with both ambiguity and unambiguity, neither should appear accidentally when the intent was the opposite.
-
-% TODO: this next paragraph should almost certainly not be here, we haven't talked about syntax constructions yet. Reread agrees with this.
-
-Syntax constructions allow for ambiguity, but provide poor tools for controlling it (see Section~\ref{sec:static-dynamic-ambiguity}) and sometimes require extensive rewrites to remove undesired ambiguity (see Section~\ref{sec:ambiguous-lists}).
-% TODO: this doesn't quite feel like an end
-% TODO: should probably have some more mention of what syntax constructions give here?
 
 \section{Problem Statement} \label{sec:research-question}
 
-This thesis explores programming language construction through the creation and composition of individual language features that are self contained in terms of syntax and semantics. In particular, it should be possible to extend a language by cherrypicking one or a few features from another language without changing them.
+This thesis explores programming language construction through the creation and composition of individual language features that are self contained in terms of syntax and semantics. In particular, it should be possible to extend a language by cherry-picking one or a few features from another language without without having to reimplement them.
 
 Features here refers to things such as an if-statement, an anonymous function, or a pattern used in pattern matching.
+
+This stands in contrast with most other approaches that either compose entire languages (i.e., you get the entire language or nothing at all), or spread the semantics of individual features across several stages of compilation.
 
 The goal above states very little in regards to the form of a solution, nor does it provide much assistance in evaluating the usefulness of any particular solution. To alleviate this issue the following additional design goals will guide the design and evaluation of the approach.
 
@@ -251,27 +256,29 @@ The goal above states very little in regards to the form of a solution, nor does
   \item[Abstraction preservation:] No usage of a language feature should expose its implementation to an end user.
   \item[Good error messages:] Improper use or implementation of language features should present the user with understandable error messages.
   \item[Composition through cherrypicking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
-  \item[Reasoning without context:] Expanding upon the previous point, a language feature should be as self contained as possible to permit reasoning about it without full awareness of its context.
+  \item[Reasoning without context:] Expanding upon the previous point, a language feature should be as self contained as possible, to permit reasoning about it without full awareness of its context.
 \end{description}
 
 These goals are referred to throughout the thesis to motivate choices or highlight strengths and flaws with the chosen approach.
 
 \subsection{Delimitations} \label{sec:delimitations}
 
+There are a few aspects of programming languages that this thesis does not address, but rather leaves for future work:
+
 \begin{description}
   \item[Type safety] Type safety is not considered. Incorrect usage of features that would give rise to type errors is not detected and will most likely present errors in terms of the implementation of the features being (mis)used. This affects abstraction preservation and good error messages.
 
-  \item[Lexing] This thesis assumes that parsing is done on a token stream, i.e. the syntactical freedom of a feature is limited by a predefined tokenization. This affects syntactical freedom. In practice it mostly means that the syntax of the following things cannot be customized:
+  \item[Lexing] This thesis assumes that parsing is done on a token stream, i.e. the syntactical freedom of a feature is limited by a predefined tokenization. This affects syntactical freedom. In practice, it mostly means that the syntax of the following things cannot be customized:
   \begin{itemize}
     \item Valid identifiers
-    \item Literals, e.g. integers and strings
+    \item Literals, e.g., integers and strings
     \item Comments
     % \item Symbols, the lexer assumes that certain characters will never be part of multi-character symbols, e.g. \mintinline{syncon}{"<;>"} will be tokenized as three symbols since \mintinline{syncon}{";"} is assumed to always be alone. % TODO: is this really important to mention here? it seems too specific
   \end{itemize}
 
   \item[Indentation] This thesis assumes syntax to be whitespace independent, which precludes defining languages such as Python where indentation is important. This affects syntactical freedom.
 
-  \item[Namespaces and Importing] Namespaces and other similar methods of partitioning definitions and later importing them are not considered, only lexical scoping is used. This is sufficient for C and some similar languages, but not for e.g. Java. It does not explicitly affect any of the design goals, but it clearly limits the languages that can be designed.
+  \item[Namespaces and Importing] Namespaces and other similar methods of partitioning definitions and later importing them are not considered, only lexical scoping is used. This is sufficient for C and some similar languages, but not for Java and other languages with some form of modules. It does not explicitly affect any of the design goals, but it clearly limits the languages that can be designed.
 \end{description}
 
 \section{Contributions} \label{sec:contributions}
@@ -279,7 +286,7 @@ These goals are referred to throughout the thesis to motivate choices or highlig
 This thesis contributes the following:
 
 \begin{itemize}
-  \item A method of specifying the syntax, binding semantics and expansion of a language construction (macro) in a singular location. The design considerations from a user perspective can be found in Chapter~\ref{sec:syntax-constructions}, while formalization is in Chapter~\ref{sec:formalization}.
+  \item A method of specifying the syntax, binding semantics, and expansion of a language construction (macro) in a singular location. This differs from most other solutions, wherein the unit of composition is a language, not an individual feature. The design considerations from a user perspective can be found in Chapter~\ref{sec:syntax-constructions}, while formalization is in Chapter~\ref{sec:formalization}.
   \item Proof that macro expansion using the above method terminates, given a finite input (Section~\ref{sec:expansion-formalization}).
   \item An algorithm for checking that a given expansion specification can never introduce binding errors, along with justification for the correctness of this algorithm (Section~\ref{sec:expansion-checking-formalization}).
   \item An implementation of a non-trivial subset of OCaml (Section~\ref{sec:functional-eval}) to evaluate the method's suitability in modeling a typical functional language, focusing on pattern matching.
@@ -290,19 +297,23 @@ This thesis contributes the following:
 \section{Ethics, the Environment, and Societal Impact}
 % TODO: this has somethings that are essentially societal, but they weren't written as that, ensure that it is properly covered
 
-Given the nature of this thesis, it has no direct ethical or environmental impact, but plenty of indirect impact. The aim is to produce a convenient way of constructing new programming languages, i.e., the product of this thesis is a tool to construct tools (programming languages) to construct tools (programs). These final tools, programs, can of course be ethically questionable, or perfectly ethical, but considering this at such a removed level is\ldots impractical.
+Given the nature of this thesis, it has no direct ethical or environmental impact, but plenty of indirect impact. The aim is to produce a convenient way of constructing new programming languages, i.e., the product of this thesis is a tool to construct tools (programming languages) to construct tools (programs). These final tools, programs, can of course be ethically questionable, or perfectly ethical, but considering this at such a removed level is too wide a topic to be practically applicable in this thesis.
 
-On a more direct level however, the purpose is essentially to make programming language construction easier, i.e. making the work of a certain subset of people easier, which seems like an morally positive thing to do.
+On a more direct level, however, the purpose is essentially to make programming language construction easier, i.e., making the work of a certain subset of people easier, which seems like a morally positive thing to do.
 
 Environmentally speaking, the most clear impact would be the power consumption required to run a program. This thesis makes no claim or effort on execution efficiency (though it is part of plans for future work), thus there is a likelihood that the programs produced would be inefficient, and thus have a high power consumption. Additionally, by making programs and programming languages easier to construct we increase the likelihood that programming will be used for some problem where it would previously have been implausible. The impact of this is unclear and depends on a comparison with the impact of whatever would otherwise have been used, or nothing if the problem would not have been solved at all.
 
 \chapter{Related Work}
 
-The related work is separated roughly based on the degree to which they solve the two problems introduced in sections \ref{sec:problem-abstraction} and \ref{sec:problem-syntax}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax; they deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
+The related work is separated roughly based on the degree to which they solve the two problems introduced in sections \ref{sec:problem-abstraction} and \ref{sec:problem-syntax}: solutions for abstraction problems, solutions for syntax problems, and solutions that address both problems. These solutions deal with various forms of macro systems, except for those only concerning syntax. These instead deal with parsing extensible syntax and largely do not concern themselves with the semantics of what is being parsed.
 
 \section{Abstraction Solutions} \label{sec:abstraction-solutions}
+% TODO: need to say that none of these solutions deal with syntax, thus the solutions are not complete, or something like it
 
-Lisps have long had macro systems that do not introduce accidental name capture, mostly through renaming \cite{FLATT2012Macros-that-Wor}(TODO: more references). The latest iteration of Racket's \cite{Flatt2010Reference:-Rack} macro expander instead achieves binding hygiene by using sets of scopes \cite{Flatt2016Binding-As-Sets}. Somewhat simplified, a set of scopes is attached to each identifier, namely the scopes that contain it. To find the binding referred to by an identifier with set $s_i$, find the binding with set $s_b \subseteq s_i$ such that for all other sets $s'_b \subseteq s_i$ attached to binders, $s'_b \subset s_b$, i.e. $s_b$ is the largest subset of $s_i$. The authors report the implementation as simpler to follow than the previous version using renaming, and while ambiguous references are possible they do not appear in practice.
+% TODO: more references to renaming macro systems.
+Accidental name capture is largely a solved problem in the Lisp world, most commonly through renaming (e.g. \cite{FLATT2012Macros-that-Wor}). The latest iteration of Racket's \cite{Flatt2010Reference:-Rack} macro expander instead achieves binding hygiene by using sets of scopes \cite{Flatt2016Binding-As-Sets}.
+
+Rather simplified, each identifier is equipped with a set of scopes based on, for example, its lexical context or the macro it was introduced by. Name resolution then compares the sets attached to binding identifiers and referencing identifiers to determine how they relate. The authors report the implementation as simpler to follow than the previous version using renaming, and while ambiguous references are possible, they do not appear in practice. Neither of these solutions deal with errors after expansion.
 
 $\lambda_m$ \cite{Herman2010A-Theory-of-Typ} takes a different route and is an extension of the lambda calculus with macros and macro type signatures. These signatures describe the structure of macro arguments and results, including binding structure, and form an inspirational basis to the approach taken by this thesis in regard to hygiene and name binding.
 
@@ -319,7 +330,7 @@ odd n = case n of
 \end{minted}
 The functions \mintinline{haskell}{even} and \mintinline{haskell}{odd} are available both before and after their declarations, not only in some nested expression.
 
-In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs.
+In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs, both of which are also present in this thesis.
 
 Romeo \cite{Stansifer2014Romeo} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$.
 
@@ -327,11 +338,11 @@ Romeo \cite{Stansifer2014Romeo} continue the path of typed macros but extends it
 
 The syntax definition formalism SDF \cite{Heering1989The-syntax-defi} is a system with a combined notation for lexical and context-free grammar, along with a parser. Productions are listed individually, allowing non-terminals to be spread across files in a very similar fashion to the syntax constructions of this thesis. SDF also uses associativity annotations for operators instead of necessitating a manual rewriting of the grammar.
 
-A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result.
+A specification in SDF is used to generate a lexical grammar and a context-free grammar, both of which are then used for the actual parsing. The productions in the specification also double to describe an abstract syntax tree, which is the end result. This means that SDF retains the separation of syntax and semantics, a single feature will be spread over several phases, of which SDF provides one. In case of an ambiguous parse SDF produces a parse forest, while this thesis attempts to describe the ambiguities in a useful way to the user.
 
 SDF has also been extended \cite{Erdweg2013Layout-sensitiv} to handle layout-sensitive grammars through extra annotations, thus retaining the declarative nature of a grammar.
 
-\textcite{Silkensen2013Well-Typed-Isla} instead consider the problem of combining already constructed grammars in a scalable way. The main observation they use is that most domain specific languages deal with values of different types. With this in mind the different grammars can use these types, for example using non-terminals such as \mintinline{syncon}{Matrix} instead of \mintinline{syncon}{Expression}. Additionally, if identifiers can be specified to have a specific type (e.g. \mintinline{syncon}{Matrix}) they can be used as islands in island parsing. By using these two things the authors present a parsing algorithm that needs to examine far fewer possible parsings, even in the presence of many DSLs. The precise scalability claim can be found in the paper.
+\textcite{Silkensen2013Well-Typed-Isla} consider the problem of combining already constructed grammars in a scalable way. The main observation they use is that most domain specific languages deal with values of different types. With this in mind the different grammars can use these types, for example using non-terminals such as \mintinline{syncon}{Matrix} instead of \mintinline{syncon}{Expression}. Additionally, if identifiers can be specified to have a specific type (e.g. \mintinline{syncon}{Matrix}) they can be used as islands in island parsing. By using these two things the authors present a parsing algorithm that needs to examine far fewer possible parsings, even in the presence of many DSLs. The precise scalability claim can be found in the paper. The efficiency is based on the presence of type annotations on variable declarations, which are thus required.
 
 \section{Combined Solutions} \label{sec:full-solutions}
 
@@ -442,7 +453,7 @@ A reader with previous experience of context free grammars may have some qualms 
 
 \section{Bindings} \label{sec:design-bindings}
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{ocaml}
 let a = "value" in
 print_string a
@@ -469,7 +480,7 @@ syntax let:Expression =
 
 The syntax type \mintinline{syncon}{Identifier} is a built in type that participates in name binding. \mintinline{syncon}{#bind x in body} specifies that \mintinline{syncon}{x} is part of a definition, otherwise it would be interpreted as a reference that must be bound in the current environment.
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{java}
 String first = "first";
 {  // Opens a new scope
@@ -621,7 +632,8 @@ If the original syntax construction contains EBNF operators some elements may oc
 \begin{minted}{syncon}
 syntax switch:Expression =
   "switch" e:Expression "{"
-  cases:("case" test:Expression ":" result:Expression)*
+  cases:("case" test:Expression
+         ":" result:Expression)*
   "default" ":" default:Expression "}"
 {
   Expression`
@@ -789,49 +801,103 @@ The solution used in this thesis requires tagging to distinguish a spliced ident
 
 \chapter{Formalization} \label{sec:formalization}
 
-The definition of a syntax construction presented herein is given in a top-down order, starting with the syntax construction itself, then filling in the necessary details one at a time. Paths in particular are explained in their own section, Section~\ref{sec:paths}, but briefly, they select some subset of the children of a syntax construction or syntax construction instance.
+This chapter takes the informal description of Chapter~\ref{sec:syntax-constructions} and develops a set of more formal definitions and algorithms. Figure~\ref{fig:formalization-flowchart} shows an overview of the different parts and how they relate to each other in terms of inputs and outputs.
 
-Some parts of this formalization will use a line above an expression to mean a sequence of expressions. For example, $\overline{i}$ denotes a sequence of $i$s, $i_n$ denotes the $n$th element in the sequence, and $\overline{i_n + 1}$ denotes a sequence of $i_n + 1$ for each $n$ (i.e. a mapping over the sequence). Given two sequences $\overline{a}$ and $\overline{b}$, $\overline{(\overline{a}, b_n)}$ is a sequence where each $b_n$ is paired with the entire sequence $\overline{a}$.
+The entire chapter also features a running example in the form of a language (Listing~\ref{lst:formal-language}) and some source code in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. The language implements simple arithmetic, a scoping construct, and a name binding construct. The core language used is a small, Lisp-like language, providing arithmetic, sequential composition, and a binding construct. This language can be found in Appendix~\ref{sec:formal-core}.
 
-A syntax construction $c$ is given by a tuple
-$$ c = (t_c, syntax, \overline{scope}, B_i, B_b, B_a, p_c, a_c, e_c) $$
-with the following components:
+% TODO: maybe use something more latex-y?
+\begin{figure}[b]
+\includegraphics[width=\textwidth]{resources/formalization-flowchart}
+\caption{The different algorithms that formalize syntax constructions, and how they relate to each other.}
+\label{fig:formalization-flowchart}
+\end{figure}
 
-\begin{tabular}{r|p{10cm}}
-$t_c$ & The syntax type of $c$ \\
-$syntax$ & The syntax description of $c$ \\
-$\overline{scope}$ & The scopes introduced by $c$ \\
-$B_i$ & The nested bindings of $c$, a set of tuples $(path, \overline{path})$ where the first element is a path to an identifier and the second is paths to where it is in scope. \\
-$B_b$ and $B_a$ & The bindings $c$ exports before and after itself, respectively. Sets of paths to identifiers. \\
-$p_c$ & The precedence of $c$, $+\infty$ unless otherwise specified. \\
-$a_c$ & The associativity of $c$. \\
-$e_c$ & The expansion of $c$. \\
-\end{tabular}
+\clearpage
+\newgeometry{headsep=10mm,footskip=0mm,bottom=0mm}
+\begin{listing}[t!]
+\inputminted{syncon}{implementation/languages/formalization-example/language}
+\caption{The language that will be used as a running example.\label{lst:formal-language}}
+\end{listing}
 
-The structure of $syntax$ is given by the following grammar:
+\begin{listing}[H]
+\inputminted[linenos]{text}{implementation/languages/formalization-example/file}
+\caption{Source code for the running example. Should evaluate to $8$.\label{lst:formal-file}}
+\end{listing}
+\clearpage
+\restoregeometry
+
+\section{Defining Syntax Constructions}
+
+Many of the concepts that make up a syntax construction must refer to its children, and will do so through the use of a \emph{path}. A path is a sequence of steps directing traversal through a tree. Each step is either a number $n$, traversing down the $n$th child of the current node, or a $*$ traversing down all children of the current node. This notion of traversal will be explained further when we later define the form of a syntax description and an instance. Additionally, each path belongs to a single syntax construction and must not be used with any other. We use $[]$ for the empty path and $n:path$ for prepending a step $n$ to path $path$. Finally, we use $[a, b, c]$ as shorthand for $a : b : c : []$.
+
+Some parts of this formalization will use a line above an expression to mean a sequence of expressions. For example, $\overline{i}$ denotes a sequence of $i$s, $i_n$ denotes the $n$th element in the sequence, and $\overline{i_n + 1}$ denotes a sequence of $i_n + 1$ for each $n$ (i.e. a mapping over the sequence). For example, given the sequence $\overline{i} = [1, 2, 3]$, we have $\overline{i_n + 1} = [2, 3, 4]$. Additionally, given two sequences $\overline{a} = [1, 2]$ and $\overline{b} = [3, 4]$, $\overline{(\overline{a}, b_n)} = [([1, 2], 3), ([1, 2], 4)]$, i.e., $\overline{a}$ stays a sequence since it has no index and retains the line.
+
+\subsubsection{Syntax Type}
+
+The syntax type $t_c$ of a syntax construction $c$ is given by the following grammar:
+
+\setlength{\grammarindent}{8em}
+\begin{grammar}
+<SyntaxType> ::= $\mathit{name}$
+  \alt '(' $\mathit{name}$ ',' <SyntaxType> ')'
+\end{grammar}
+
+where $\mathit{name}$ is a string, presumably given by a user. The first case is a syntax type that is marked as \syncon{builtin}. The second case is any other syntax type, where the first component is the name of the syntax type, and the latter is the underlying syntax type, i.e., what a syntax construction would expand to.
+
+For our example language all syntax constructions have the syntax type $(\syncon{Expression}, \syncon{Core})$, except \syncon{top}, which has syntax type \syncon{File}.
+
+\subsubsection{Syntax Description}
+
+The syntax description $\mathit{syntax}$ of a syntax construction $c$ is given by the following grammar:
 
 \setlength{\grammarindent}{6em}
 \begin{grammar}
-<syntax> ::= 'Identifier'
+<Syntax> ::= 'Identifier'
   \alt 'Symbol'
   \alt 'String'
   \alt 'Integer'
   \alt 'Float'
   \alt <Token-Literal>
-  \alt t
-  \alt '(' <syntax>* ')'
-  \alt <syntax> '*'
-  \alt <syntax> '+'
-  \alt <syntax> '?'
+  \alt <SyntaxType>
+  \alt '(' <Syntax>* ')'
+  \alt <Syntax> '*'
+  \alt <Syntax> '+'
+  \alt <Syntax> '?'
 \end{grammar}
 
+The last three alternatives represent the EBNF operators used throughout Chapter~\ref{sec:syntax-constructions}.
+
+For example, the $syntax$ of \mintinline{syncon}{block} is given by:
+
+$$
+\text{(} \enspace \text{symbol}'\{' \enspace (\syncon{Expression} \enspace \text{symbol}';')\text{*} \enspace \text{symbol}'\}' \enspace \text{)}
+$$
+
+Since the syntax used in Section~\ref{sec:design-syntax} allows multiple direct children (i.e. without going through ''($\ldots$)''), but the syntax above does not, we implicitly insert parentheses around the description to get an equivalent description.
+
 From here we define the concept of a leaf of a syntax construction, those descendants that appear atomic: the first seven alternatives in the grammar above are leaves.
+
+We are now ready to define path traversal through a syntax description. We will write it as function application, i.e., $path(syntax)$ (though the definition below uses an extra pair of parentheses to clarify the grouping):
+
+$$
+\begin{array}{rcl}
+([])(syntax) & = & i \\
+(n : path)((\overline{syntax})) & = & path(syntax_n) \\
+(\_ : path)(syntax~*) & = & path(syntax) \\
+(\_ : path)(syntax~+) & = & path(syntax) \\
+(\_ : path)(syntax~?) & = & path(syntax) \\
+\end{array}
+$$
+
+As an example, $[2, *, 1](syntax \text{ of } \syncon{block}) = \syncon{Expression}$. We also place a restriction on paths: a path must select a single \synt{Syntax} in the syntax description of the syntax construction to which it belongs.
+
+\subsubsection{Syntax Construction Instance}
 
 When a syntax construction $c$ is parsed we create an \emph{instance} of it, which is defined by the following grammar:
 
 \setlength{\grammarindent}{6.5em}
 \begin{grammar}
-<Instance> ::= c <Inner>
+<Instance> ::= c '\{' <Inner> '\}'
 
 <Inner> ::= <Token>
   \alt <Instance>
@@ -839,15 +905,90 @@ When a syntax construction $c$ is parsed we create an \emph{instance} of it, whi
   \alt '[' <Inner>* ']'
 \end{grammar}
 
-The structure of an instance has a very direct mapping to the syntax description of the construction itself; the first six alternatives of the description map to a \synt{Token}, $t$ maps to an \synt{Instance}, a parenthesized sequence maps to a parenthesized sequence, and an EBNF operator maps to a bracketed sequence. It is worth noting here that for our purposes an instance and an abstract syntax tree are the same thing.
+For example, the \mintinline{syncon}{block} on lines 2 through 5 of Listing~\ref{lst:formal-file} has the following instance:
 
-A scope $s$ is given by a tuple
+$$
+\begin{array}{l}
+\syncon{block}\{ \enspace \text{(} \\
+\quad \text{token}'\{' \\
+\quad \text{[} \enspace \text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
+\quad \hphantom{\text{[}} \enspace \text{(} \enspace \syncon{lit}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \enspace \text{]} \\
+\quad \text{token}'\}' \enspace \text{)} \enspace \} \\
+\end{array}
+$$
 
-$$ s = (path, \overline{path}, scope) $$
+where $\syncon{def}\{\ldots\}$ is the instance of the \mintinline{syncon}{def} on line~3, and $\syncon{lit}\{\ldots\}$ is the instance of the \syncon{lit} on line~4.
 
-where the first component describes how to repeat the scope in the presence of EBNF operators, the second gives paths to the leaves that are part of the scope, and the third is the parent scope. Additionally there is a special scope $near = ([], \overline{unscoped}, \bot)$, to represent the scope in which an instance of $c$ resides. No two scopes should share any paths in the second element, i.e. all leaves should belong to exactly one scope, and $\overline{unscoped}$ should contain all leaves that are not covered by some other scope, i.e. all leaves belong to a scope. Additionally, the path in the first component must be a prefix of all paths in the second component.
+The structure of an instance has a very direct mapping from the syntax description of the construction itself; the first six alternatives of \synt{Syntax} map to a \synt{Token}, \synt{SyntaxType} maps to an \synt{Instance}, a parenthesized sequence maps to a parenthesized sequence, and an EBNF operator maps to a bracketed sequence. It is worth noting here that for our purposes an instance and an abstract syntax tree are the same thing.
 
-An expansion $e_c$ is given by the following grammar:
+As a parallel to the leaves of a syntax construction, we define the leaves of an instance to be the \synt{Token}s and \synt{Instance}s that are reachable without passing through some other \synt{Instance}. The leaves of the \syncon{block} instance above are the curly braces, the semi-colons, the $\syncon{def}\{\ldots\}$, and the $\syncon{lit}\{\ldots\}$.
+
+\newcommand{\leaves}{\ensuremath{\mathit{leaves}}}
+
+More concretely, we compute the leaves of an instance using \leaves:
+
+\newcommand{\children}{\ensuremath{\mathit{children}}}
+$$
+\begin{array}{rcl}
+\leaves(c\{i\}) & = & children(i) \\
+\children(token) & = & \{token\} \\
+\children(c\{i\}) & = & \{c~i\} \\
+\children((\overline{i})) & = & \bigcup\limits_n \children(i_n) \\
+\children([\overline{i}]) & = & \bigcup\limits_n \children(i_n) \\
+\end{array}
+$$
+\let\children\undefined
+
+Path traversal in an instance will, just as path traversal in a syntax description, be written as function application, i.e., $path(i)$:
+
+$$
+\begin{array}{rcl}
+([])(i) & = & \{i\} \\
+(n : path)((\overline{syntax})) & = & path(syntax_n) \\
+(n : path)([\overline{syntax}]) & = & path(syntax_n) \\
+(* : path)([\overline{syntax}]) & = & \bigcup_n path(syntax_n) \\
+\end{array}
+$$
+
+Path traversal in an instance may give several results, or none at all, thus we produce a set instead of a single element.
+
+For example, traversing the $\syncon{block}\{\ldots\}$ instance above using the path $[2, *, 1]$ gives the following result:
+
+$$
+[2, *, 1](\syncon{block}\{\ldots\}) = \{\syncon{def}\{\ldots\}, \syncon{lit}\{\ldots\}\}
+$$
+
+\subsubsection{Scope}
+
+\newcommand{\near}{\ensuremath{\mathit{near}}}
+
+A scope is given by the following grammar:
+
+\begin{grammar}
+<Scope> ::= '(' $path$ ',' $paths$ ',' <Scope> ')'
+  \alt \near
+\end{grammar}
+% TODO: ensure that the initial description of scopes covers repeating scopes and parent scopes properly
+
+The first case represents a scope introduced via \syncon{#scope}. It has three components: a path describing how often it repeats (i.e. \syncon{#scope repeat:(...)}), a set of paths to covered leaves (i.e. \syncon{#scope (leaf1 leaf2)}), and a parent scope.
+
+The second case represents the scope of the syntax construction itself, which won't be known until it is actually instantiated. \near\ is the ancestor scope of all other scopes. Note that each scope belongs to a single syntax construction. In particular, there is a separate \near\ scope for each, and they will not be discussed without a connection to some syntax construction.
+
+\newcommand{\cover}{\ensuremath{\mathit{cover}}}
+We also introduce the concept of \cover: the cover of a scope is a set of paths to the leaves it contains:
+
+$$
+\begin{array}{rcl}
+\cover(\text{(}\_, \mathit{paths}, \_\text{)}) & = & \mathit{paths} \\
+\cover(\near) & = & \{\text{The leaves not covered by another scope}\} \\
+\end{array}
+$$
+
+For example, \syncon{block} has two scopes: \near\ and $([], \{[2, *, 1]\}, \near)$. Their covers are $\{[1], [2, *, 2], [3]\}$ and $\{[2, *, 1]\}$, respectively. The latter scope corresponds to the \syncon{#scope (es)} declaration, thus the cover is a single path to \syncon{es}. \near\ then covers everything else, in this case the curly braces and the semicolon.
+
+\subsubsection{Expansion Template}
+
+An expansion template $e_c$ is given by the following grammar:
 
 \setlength{\grammarindent}{8em}
 \begin{grammar}
@@ -856,7 +997,7 @@ An expansion $e_c$ is given by the following grammar:
   \alt 'foldl' $path$ <Expansion> <Expansion>
   \alt <Template>
 
-<Template> ::= c <Inner>
+<Template> ::= c '\{' <Inner> '\}'
 
 <Inner> ::= <Token>
   \alt <Expansion>
@@ -864,15 +1005,46 @@ An expansion $e_c$ is given by the following grammar:
   \alt '[' <Inner>* ']'
 \end{grammar}
 
-It is essentially an instance, except with the capability of splicing in an element from another instance, or folding over many of them, to create a new instance of some other construction. The 'acc' $n$ alternative refers to the accumulator of a surrounding fold, the innermost if $n = 0$, second inner-most if $n = 1$, etc., essentially a de bruijn index. The actual implementation additionally has a right fold, as well as $fold1$ variations of both, where the first element of the list is used as the initial value of the accumulator while folding over the tail of the list, but these are omitted here for brevity.
+It is essentially an instance, except with the capability of splicing in an element from another instance, or folding over many of them, to create a new instance of some other construction. The 'acc' $n$ alternative refers to the accumulator of a surrounding fold, the innermost if $n = 0$, second inner-most if $n = 1$, etc. This is essentially a de bruijn index, except instead of a lambda binding an argument, we have a fold binding an accumulator. The actual implementation additionally has a right fold, as well as $fold1$ variations of both, where the first element of the list is used as the initial value of the accumulator while folding over the tail of the list, but these are omitted here for brevity.
+
+The \mintinline{syncon}{block} syntax construction has the following expansion template:
+
+$$
+\begin{array}{l}
+\text{foldl} \enspace [2, *, 1] \\
+\qquad \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \enspace \text{token}'(' \enspace \text{token}'seq' \enspace \text{acc}~0 \enspace [2, *, 1] \enspace \text{token}')' \enspace \text{)} \enspace \} \\
+\qquad \text{\mintinline{syncon}{corelit}}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \}
+\end{array}
+$$
 
 An additional point here is that of recursion: many macro systems allow a macro to expand to code containing the macro itself, but syntax constructions do not (neither directly nor indirectly). Disallowing recursion loses some expressive power, but EBNF operators and folds mostly make up for this loss in practice, and we gain some nice termination guarantees instead.
 
-\section{Source Code Parser}
+\subsubsection{Syntax Construction}
 
-Parsing a language (i.e. a set of syntax constructions) assumes the presence of an algorithm to parse a context free grammar and give all possible parse trees. If there is a single parse tree the parse was successful, if there are none it was not, and if there are many the parse was ambiguous.
+Putting it all together, a syntax construction $c$ is given by a tuple
+$$ c = (t_c, syntax, S, B_i, B_b, B_a, p_c, a_c, e_c) $$
+with the following components:
 
-The algorithm for translating a set of syntax constructions to a context free grammar proceeds largely as described below, using the following notation:
+\begin{tabular}{r|p{10cm}}
+$t_c$ & The syntax type of $c$ \\
+$syntax$ & The syntax description of $c$ \\
+$S$ & The scopes introduced by $c$, a set of scopes. \\
+$B_i$ & The nested bindings of $c$, a set of tuples $(path, paths)$ where the first element is a path to an identifier and the second is a set of paths to where it is in scope. \\
+$B_b$ and $B_a$ & The bindings $c$ exports before and after itself, respectively. Sets of paths to identifiers. \\
+$p_c$ & The precedence of $c$, $+\infty$ unless otherwise specified. \\
+$a_c$ & The associativity of $c$. \\
+$e_c$ & The expansion template of $c$. \\
+\end{tabular}
+
+From this we also define our concept of a language: a language defined using syntax constructions is a set of syntax constructions.
+
+\section{Source Code Parsing}
+
+The diagram in Figure~\ref{fig:formalization-flowchart} contains three components that are relevant to parsing code written in a language defined using syntax constructions: Grammar Generation, Parsing, and Ambiguity Reporting. This section will describe them, along with their connections to each other.
+
+\subsection{Grammar Generation}
+
+The algorithm for translating a set of syntax constructions to a context free grammar proceeds as described below, using the following notation:
 
 \mathligsoff
 {\tabulinesep=2mm
@@ -887,7 +1059,7 @@ $N^t_+$ & Highest precedence group in $t$. Note that $N^t_+ \neq N^t_-$ is not t
 \begin{enumerate}
   \item Group syntax constructions by their syntax type, then by precedence.
   \item For each such group, generate a non-terminal $N^t_p$:
-  \begin{enumerate}
+  \begin{itemize}
     \item For each syntax construction $c$, generate one production according to its syntax description:
     \begin{itemize}
       \item Identifier, integer, float, string, and symbol each match one token of the corresponding kind.
@@ -905,18 +1077,87 @@ $N^t_+$ & Highest precedence group in $t$. Note that $N^t_+ \neq N^t_-$ is not t
       \item A parenthesized sequence matches each of its children in turn.
       \item EBNF operators match repetitions as expected.
     \end{itemize}
-  \end{enumerate}
+  \end{itemize}
   \item For each non-terminal $N^t_i$ except $N^t_+$ add a production matching the non-terminal $next(N^t_i)$.
 \end{enumerate}
 \mathligson
 
-\subsection{Ambiguity Detection} \label{sec:implementation-ambiguity-detection}
+For our example language, grouping by syntax type and then precedence gives the following grouping:
 
-If the generated context free grammar is ambiguous and we parse source code that exposes this ambiguity, i.e., the source code can be parsed in multiple ways, we wish to produce a useful error message. The means by which we construct this error message is technically not needed to implement the correct semantics of syntax constructions, but given the presence of a design goal relating solely to the quality of error messages it seemed prudent to include it.
+\begin{itemize}
+  \item \mintinline{syncon}{File}
+  \begin{description}
+    \item[$+\infty$] \mintinline{syncon}{top}
+  \end{description}
 
-In such a case the parser produces multiple abstract syntax trees, i.e., detecting that there is an ambiguity is trivial, but the mere fact that a file can be parsed in multiple ways provides no actionable information towards fixing the problem.
+  \item \mintinline{syncon}{Expression}
+  \begin{description}
+    \item[$1$] \mintinline{syncon}{def}
+    \item[$2$] \mintinline{syncon}{sum}
+    \item[$+\infty$] \mintinline{syncon}{var}, \mintinline{syncon}{lit}, and \mintinline{syncon}{block}
+  \end{description}
+\end{itemize}
 
-Instead we wish to produce an error that refers only to the actually ambiguous parts of the source file. Furthermore, we wish to present the different parsings in an understandable way.
+Generating production rules according to point 2 gives the following grammar:
+
+\setlength{\grammarindent}{9em}
+\begin{grammar}
+<FileInf> ::= <Expression1>
+
+<Expression1> ::= 'def' <Identifier> '=' <Expression1>
+
+<Expression2> ::= <Expression2> '+' <ExpressionInf>
+
+<ExpressionInf> ::= <Identifier>
+  \alt <Integer>
+  \alt '{' (<Expression1> ';')* '}'
+\end{grammar}
+
+where \synt{Identifier} will not match an identifier that is exactly 'def'.
+
+Note how the three \mintinline{syncon}{Expression}s refer to each other: \synt{Expression1} only references itself, \synt{Expression2} references itself and \synt{ExpressionInf}, and \synt{ExpressionInf} only references \synt{Expression1}. These references are determined by the precedence and associativity of the syntax construction that generated each production.
+
+This grammar is not particularly useful however, since neither \synt{Expression2} nor \synt{ExpressionInf} are reachable from the start symbol \synt{FileInf}. Step 3 solves this by introducing an extra production to each of \synt{Expression1} and \synt{Expression2}, which produces our final grammar:
+
+\setlength{\grammarindent}{9em}
+\begin{grammar}
+<FileInf> ::= <Expression1>
+
+<Expression1> ::= 'def' <Identifier> '=' <Expression1>
+  \alt <Expression2>
+
+<Expression2> ::= <Expression2> '+' <ExpressionInf>
+  \alt <ExpressionInf>
+
+<ExpressionInf> ::= <Identifier>
+  \alt <Integer>
+  \alt '$\{$' (<Expression1> ';')* '$\}$'
+\end{grammar}
+
+\subsection{Parsing}
+
+We here assume the presence of a parsing algorithm that can handle an arbitrary CFG, for example the Earley \cite{Earley1970An-Efficient-Co} parsing algorithm. In particular, if the source code cannot be parsed unambiguously then we must be able to construct all possible parse trees.
+
+With this in mind, the inputs of this step are the following:
+
+\begin{itemize}
+  \item A context free grammar produced by the previous section.
+  \item A token stream.
+\end{itemize}
+
+The output then has three possible forms:
+
+\begin{itemize}
+  \item A single parse tree, from which we produce an instance. This is the successful case. We proceed to the next step, Name Resolution, in Section~\ref{sec:name-resolution}
+  \item No parse trees, we could not parse the source. This is the simple failure case, report an error to the user.
+  \item Two or more parse trees, from which we produce one instance each. This is the ambiguous case, the more complex failure case, in which case we move on to the next section, Ambiguity Reporting.
+\end{itemize}
+
+\subsection{Ambiguity Reporting} \label{sec:implementation-ambiguity-detection}
+
+If the parse step produced multiple instances we have encountered source code that was ambiguous, i.e., it could be parsed in multiple ways. We could trivially report to the user that the code is ambiguous and that they must clarify their intent, but merely stating that an entire file is ambiguous provides very little assistance in locating the problem.
+
+Instead we wish to produce an error that refers only to the actually ambiguous parts of the source file. Furthermore, we wish to present the different parse trees in an understandable way.
 
 Starting with the second point, assume that no operators have defined precedence or associativity and consider the following expression:
 
@@ -939,7 +1180,57 @@ $$ (a + b) + (c + d) $$
 $$ a + ((b + c) + d) $$
 $$ a + (b + (c + d)) $$
 
-All of these are sums, the first two of a sum and a variable, the next of two sums, the last two of a variable and a sum. It is the hypothesis of this thesis that this description is sufficient, i.e. each parsing can be described by a single top-level node (here sum) and a shallow description of its children (here sum and variable, two sums, and variable and sum respectively). Note that each of these would also include the area of the source they cover as well. This will be referred to as a two-level representation. It appears to be enough information for a user to solve one part of the ambiguity without being overwhelmed.
+All of these are sums, the first two of a sum and a variable, the next of two sums, the last two of a variable and a sum. This form of description, i.e., a single top-level node and a shallow description of its children, will be referred to as a two-level representation.
+
+As an example, consider the following code:
+
+\begin{minted}{text}
+1 + 2 + 3
+\end{minted}
+
+Parsing this code using the running example language, but without associativity for \mintinline{syncon}{sum}, we obtain the following two instances:
+
+$$
+\begin{array}{l}
+\text{\mintinline{syncon}{top}}\{ \enspace \text{(} \\
+\quad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
+\qquad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
+\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'1' \enspace \text{)} \enspace \} \\
+\qquad \quad \text{token}'+' \\
+\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'2' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
+\qquad \text{token}'+' \\
+\qquad \text{\mintinline{syncon}{lit}}\{ \enspace \text{(} \enspace \text{token}'3' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
+\end{array}
+$$
+and
+$$
+\begin{array}{l}
+\text{\mintinline{syncon}{top}}\{ \enspace \text{(} \\
+\quad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
+\qquad \text{\mintinline{syncon}{lit}}\{ \enspace \text{(} \enspace \text{token}'1' \enspace \text{)} \enspace \} \\
+\qquad \text{token}'+' \\
+\qquad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
+\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'2' \enspace \text{)} \enspace \} \\
+\qquad \quad \text{token}'+' \\
+\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'3' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
+\end{array}
+$$
+
+Replacing these with two-level representations of the actual ambiguity gives us the following:
+
+\begin{itemize}
+  \item A \mintinline{syncon}{sum} of a \mintinline{syncon}{sum} and a \mintinline{syncon}{lit}.
+  \item A \mintinline{syncon}{sum} of a \mintinline{syncon}{lit} and a \mintinline{syncon}{sum}.
+\end{itemize}
+
+There is an additional subtlety in what we wish to consider as a two-level representation, stemming from the presence of internal structure in the form of parenthesized sequences and repetitions. In the example above we only consider full instances, not the internal structure, but we could just as well have chosen the following two-level representation:
+
+\begin{itemize}
+  \item A parenthesized sequence of a \mintinline{syncon}{sum} and a \mintinline{syncon}{lit}.
+  \item A parenthesized sequence of a \mintinline{syncon}{lit} and a \mintinline{syncon}{sum}.
+\end{itemize}
+
+This choice is discussed in more detail in the evaluation, in Section~\ref{sec:errors-ambiguous}. The remainder of this section will assume the second alternative (i.e. use parenthesized sequences and repetitions) and leave the first alternative as a potential engineering decision.
 
 The task of producing an error message then becomes selecting sub-trees from the syntax trees such that:
 
@@ -951,7 +1242,7 @@ The task of producing an error message then becomes selecting sub-trees from the
   \item No selected sub-tree can be replaced by one of its children (also replacing the corresponding sub-trees from the other syntax trees) while still satisfying the points above (i.e. the selected sub-trees are minimal).
 \end{itemize}
 
-The algorithm is fairly simple. We use a form of shallow equality where two nodes are equal if they cover the same source area and have the same kind (e.g. they are instances of the same syntax construction). With this in mind we traverse all the syntax trees in parallel, top to bottom, until we encounter a node that is shallowly different between at least two syntax trees. If any sibling of the node also is shallowly different, select the parent, otherwise select the node and keep traversing down the siblings.
+To accomplish this, we use a form of shallow equality where two nodes are equal if they cover the same source area and have the same kind (e.g. they are instances of the same syntax construction). With this in mind we traverse all the syntax trees in parallel, top to bottom, until we encounter a node that is shallowly different between at least two syntax trees. If any sibling of the node also is shallowly different, select the parent, otherwise select the node and keep traversing down the siblings.
 
 Finally, present to the user a set of two-level representations for each selected sub-tree across the syntax trees.
 
@@ -965,41 +1256,114 @@ Finally, present to the user a set of two-level representations for each selecte
 
 % TODO: the minimal requirement is a bit weirdly formulated, we might rephrase it as (no [...] can be replaced by one or more of its children [...]), but then we need to check especially for coverage differences, so if any of the children have coverage differences across the ASTs then we select the parent, otherwise we select the children
 
-\section{Paths} \label{sec:paths}
-
-A $path$ is a sequence of steps directing traversal through a tree, either the $syntax$ description of a syntax construction or the actual syntax tree of an instance. Each step is either a number $n$, traversing down the $n$th child of the current node, or a $*$ traversing down all children of the current node. We use $[]$ for the empty path and $n:path$ for prepending a step $n$ to path $path$.
-
-All paths belong to a single syntax construction and describe a path from it to one or more of its descendants, no paths traverse through a child syntax construction or instance.
-
-Furthermore, all paths that are part of the definition of $c$ are limited in the following way: they select either
-\begin{itemize}
-  \item one \synt{Syntax} element in $syntax$, or
-  \item zero or more \synt{Inner} elements of an instance of $c$.
-\end{itemize}
-Both cases are written as function application, i.e. $path(syntax)$ selects a \synt{Syntax} element and $path(c~i)$ selects a set of \synt{Inner} elements. More concretely:
+As an example, consider our running example, but once again with associativity removed for \syncon{sum}. Since Listing~\ref{lst:formal-file} contains \syncon{a + 2 + 3} we know that parsing it will produce multiple instances, in this case two. In the interest of brevity we will only show two levels of the instances at once, the node currently being compared and its children, but not its grandchildren. We will also denote shallow equality by $=_s$. Stepping through the ambiguity reporting we start by examining the top-level node of the respective trees:
 
 $$
-\begin{array}{rcl}
-([])(syntax) & = & i \\
-(n : path)((\overline{syntax})) & = & path(syntax_n) \\
-(\_ : path)(syntax~*) & = & path(syntax) \\
-(\_ : path)(syntax~+) & = & path(syntax) \\
-(\_ : path)(syntax~?) & = & path(syntax) \\
+\syncon{top}\{\enspace \text{(} \ldots \text{)} \enspace \}
+=_s
+\syncon{top}\{\enspace \text{(} \ldots \text{)} \enspace \}
+$$
+
+$$
+\text{(} \enspace \syncon{block}\{\ldots\} \enspace \text{)}
+=_s
+\text{(} \enspace \syncon{block}\{\ldots\} \enspace \text{)}
+$$
+
+$$
+\syncon{block}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+=_s
+\syncon{block}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+$$
+
+$$
+\begin{array}{l}
+\text{(} \enspace \text{token}'\{' \\
+\hphantom{\text{(}} \enspace \text{[} \ldots \text{]} \\
+\hphantom{\text{(}} \enspace \text{token}'\}' \enspace \text{)} \\
+\end{array}
+=_s
+\begin{array}{l}
+\text{(} \enspace \text{token}'\{' \\
+\hphantom{\text{(}} \enspace \text{[} \ldots \text{]} \\
+\hphantom{\text{(}} \enspace \text{token}'\}' \enspace \text{)} \\
 \end{array}
 $$
 
-and
-
 $$
 \begin{array}{rcl}
-([])(i) & = & \{i\} \\
-(n : path)((\overline{syntax})) & = & path(syntax_n) \\
-(n : path)([\overline{syntax}]) & = & path(syntax_n) \\
-(* : path)([\overline{syntax}]) & = & \bigcup_n path(syntax_n) \\
+\text{token}'\{' & =_s & \text{token}'\{' \\
+
+\text{[} \enspace \text{(} \ldots \text{)} \enspace \text{(} \ldots \text{)} \enspace \text{]}
+& =_s &
+\text{[} \enspace \text{(} \ldots \text{)} \enspace \text{(} \ldots \text{)} \enspace \text{]} \\
+
+\text{token}'\}' & =_s & \text{token}'\}' \\
 \end{array}
 $$
 
-Additionally we define a relation $p_1 \subseteq p_2$ between two paths, where
+$$
+\begin{array}{rcl}
+\text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)}
+& =_s &
+\text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
+\text{(} \enspace \syncon{sum}\{\ldots\} \enspace \text{token}';' \enspace \text{)}
+& =_s &
+\text{(} \enspace \syncon{sum}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
+\end{array}
+$$
+
+Under normal circumstances we would now have to descend into both children, but in the interest of brevity we will instead note that the first child is fully equal across the two trees (there is no ambiguity there). Descending through it will thus never come across any instances that are not shallowly equal. We will thus only concern ourselves with descent into the second child:
+
+$$
+\begin{array}{rcl}
+\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+& =_s &
+\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \} \\
+
+\text{token}';' & =_s & \text{token}';' \\
+\end{array}
+$$
+
+$$
+\begin{array}{l}
+\text{(} \enspace \syncon{sum}\{\ldots\} \\
+\hphantom{\text{(}} \enspace \text{token}'+' \\
+\hphantom{\text{(}} \enspace \syncon{lit}\{\ldots\} \\
+\end{array}
+=_s
+\begin{array}{l}
+\text{(} \enspace \syncon{var}\{\ldots\} \\
+\hphantom{\text{(}} \enspace \text{token}'+' \\
+\hphantom{\text{(}} \enspace \syncon{sum}\{\ldots\} \\
+\end{array}
+$$
+
+This is the first point where we see any inequality, but the two instances are still shallowly equal, since both are parenthesized sequences and both cover the same area of the source code.
+
+$$
+\begin{array}{rcl}
+\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+& \not=_s &
+\syncon{var}\{ \enspace \text{(} \ldots \text{)} \enspace \} \enspace \text{)} \\
+
+\text{token}'+' & \not=_s & \text{token}'+' \\
+
+\syncon{lit}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+& \not=_s &
+\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \} \enspace \text{)} \\
+\end{array}
+$$
+
+Note here than none of the children are shallowly equal. In particular, the ''$+$'' tokens cover different areas of the source code (they are the second and first ''$+$'' in the source code respectively). We thus select the parent and present that as the one ambiguity in the source code.
+
+\section{Further Properties of Paths} \label{sec:paths}
+
+This section will introduce further path-related concepts that will be used in the later sections.
+
+As a reminder, a path allows a syntax construction to refer to its children through a traversal. Each step of the traversal is either an index $n$ that traverses down the child at index $n$, or a $*$ traversing through \emph{all} children. We write the empty path $[]$, prepending $n$ to a path $p$ as $n : p$, and use $[a, b, c]$ as shorthand for $a : b : c : []$.
+
+We now define a relation $p_1 \subseteq p_2$ between two paths, where
 
 $$
 \begin{array}{ll}
@@ -1010,195 +1374,354 @@ n : path \subseteq * : path' & \text{ if } path \subseteq path' \\
 $$
 
 % TODO: the \forall here is a little bit iffy, since we only consider things for a single syntax construction
-We justify the notation by noting that if $p_1 \subseteq p_2$ then $p_1(syntax) = p_2(syntax)$ and $\forall c~i.\ p_1(c~i) \subseteq p_2(c~i)$ (keeping in mind that a path is limited to the syntax construction in which it is defined, that it must select a single \synt{Syntax} element in $syntax$, and that the structure of an instance mirrors the structure of $syntax$). We say that $p_1$ is a more specific version of $p_2$.
+We justify the notation by noting that if $p_1 \subseteq p_2$ then $p_1(syntax) = p_2(syntax)$ and $\forall c\{i\}.\ p_1(i) \subseteq p_2(i)$ (keeping in mind that a path is limited to the syntax construction in which it is defined, that it must select a single \synt{Syntax} element in $syntax$, and that the structure of an instance mirrors the structure of $syntax$). We say that $p_1$ is a more specific version of $p_2$.
 
-We also wish to be able to specialize a $path$ using some more specific path $spec$, i.e. $specialize(path, spec) \subseteq path$. Note that the fourth case below allow $path$ and $spec$ to diverge (i.e. we do not require $spec \subseteq path$) in which case the specialization is only applied to their shared prefix.
+For example, $[2, 1, 1] \subseteq [2, *, 1]$, the former selects the first sub-expression in a \mintinline{syncon}{block} instance (see Listing~\ref{lst:formal-language}), while the latter selects \emph{all} sub-expressions.
+
+\newcommand{\specialize}{\ensuremath{\mathit{specialize}}}
+
+We also wish to be able to specialize a $path$ using some more specific path $spec$, i.e. $\specialize(path, spec) \subseteq path$. Note that the fourth case below allow $path$ and $spec$ to diverge (i.e. we do not require $spec \subseteq path$), in which case the specialization is only applied to their shared prefix.
 
 $$
 \begin{array}{rcl}
-specialize(path, []) & = & path \\
-specialize(*:path, n:spec) & = & n : specialize(path, spec) \\
-specialize(*:path, \_:spec) & = & * : specialize(path, spec) \\
-specialize(n:path, n':spec) & = &
+\specialize(path, []) & = & path \\
+\specialize(*:path, n:spec) & = & n : \specialize(path, spec) \\
+\specialize(*:path, \_:spec) & = & * : \specialize(path, spec) \\
+\specialize(n:path, n':spec) & = &
 \begin{cases}
   path & n \neq n' \\
-  n : specialize(path, spec) & n = n' \\
+  n : \specialize(path, spec) & n = n' \\
 \end{cases} \\
 \end{array}
 $$
 
-\section{Expansion} \label{sec:expansion-formalization}
+For example, $\specialize([2, *, 2], [2, 1, 1]) = [2, 1, 2]$.
 
-Expanding the instance of a syntax construction is a relatively straightforward affair, but the formalization turns out to be surprisingly involved. The base idea is that an expansion is a template into which we splice sub-trees from the instance we are expanding, similar to pattern based macros in Lisp tradition.
+\section{Name Resolution} \label{sec:name-resolution}
 
-The process is made somewhat more complicated by the presence of EBNF operators that generate lists, which must be reduced to a single sub-tree through folds. To perform such a fold we require specific paths to each of the elements to be folded over, to be handed to $specialize$ later:
+\newcommand{\rooti}{\ensuremath{\mathit{root}}}
 
-$$
-\begin{array}{rcl}
-specs([], i) & = & \{[]\} \\
-specs(n:path, (\overline{i})) & = & \{n : p \mid p \in specs(path, i_n)\} \\
-specs(n:path, [\overline{i}]) & = & \{n : p \mid p \in specs(path, i_n)\} \\
-specs(*:path, [\overline{i}]) & = & \bigcup\limits_{n} \{n:p \mid p \in specs(path, i_n)\} \\
-\end{array}
-$$
+Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as \rooti, and will by construction have the shape $c\{i\}$ (i.e., it is an instance of some syntax construction $c$).
 
-Note that while this function uses set-notation, the order of the paths will be important while folding. The order is easily recovered however using a simple lexicographic sorting of the paths.
-
-Expansion (via $expand$ below) then traverses the template (the fourth argument), while keeping track of the current item in a fold ($spec$), the related accumulators ($\overline{acc}$), and the instance being expanded ($inst$). Most cases are fairly straightforward:
-
-$$
-\begin{array}{rcl}
-expand(inst, spec, \overline{acc}, path) & = & i \text{ where } path(inst) = \{i\} \\
-expand(inst, spec, \overline{acc}, \text{acc}~n) & = & acc_n \\
-expand(inst, spec, \overline{acc}, c~i) & = & c~expand(inst, spec, \overline{acc}, i) \\
-expand(inst, spec, \overline{acc}, token) & = & token \\
-expand(inst, spec, \overline{acc}, (\overline{i})) & = & (\overline{expand(inst, spec, \overline{acc}, i_n)}) \\
-expand(inst, spec, \overline{acc}, [\overline{i}]) & = & [\overline{expand(inst, spec, \overline{acc}, i_n)}] \\
-\end{array}
-$$
-The one remaining case, $foldl$, is somewhat more involved:
-$$
-\begin{array}{rcl}
-expand(inst, spec, \overline{acc}, \text{foldl}~path~f~i) & = & foldl(f', i', specs') \\
-\end{array}
-$$
-where
-$$
-\begin{array}{rcl}
-f' & = & \lambda spec'~acc'.~ expand(inst, spec', acc'~\overline{acc}, f) \\
-i' & = & expand(inst, spec, \overline{acc}, i) \\
-specs' & = & specs(specialize(path, spec), inst) \\
-\end{array}
-$$
-
-and $foldl$ is a regular left fold over a list.
-
-% TODO: this is not the most understandable justification, to say the least. there is a part of an alternate explanation below it
-At this point we can consider termination guarantees: the expansion of a single syntax construction instance must terminate. We see this easily from the definition of $expand$ and the observation that the original syntax tree is finite. Furthermore, since syntax constructions may not recursively expand into instances of themselves (neither directly nor indirectly), the complete expansion of a syntax tree must also terminate. We can see this by noting that when we expand an instance of a syntax construction $c$ then none of the instances introduced by the expansion (i.e. not the ones copied over from the previous instance) are instances of $c$, nor can they expand into instances of $c$. To expand those instances we thus never need $c$, i.e., the number of syntax constructions required for expansion is reduced by one. Since the number of syntax construction is finite we will eventually reach a point where we cannot expand any further since no remaining syntax construction has an expansion, i.e., the syntax tree is fully expanded.
-
-% We can see this by forming a directed acyclic graph where there is an edge from a syntax construction to another if the first might expand to a syntax tree containing the other, then sorting the syntax constructions in topological order. If we then expand all occurrences of the first syntax construction (call it $c$) the resulting syntax tree contains no instances of $c$, nor can an instance of $c$ occur from further expansion of other syntax construction. Expanding the second syntax construction similarly removes it, etc., until
-
-\section{Name Resolution}
-
-Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as $root$, and will by construction have the shape $c~i$ (i.e., it is an instance of some syntax construction $c$).
-
-We assume that each node is unique and distinct from all other nodes in the tree, and in particular that it can be used as the key in a mapping. This could, for example, be accomplished by attaching a unique number to each node across the tree. Furthermore, we can attach an ordering between two nodes if neither is a descendant of the other using their position in the syntax tree; a node $a$ is before another node $b$ if it appears further to the left in the tree, in which case we will write $a < b$.
+We assume that each node is unique and distinct from all other nodes in the tree, and in particular that it can be used as the key in a mapping. This could, for example, be accomplished by attaching a unique number to each node across the tree. Furthermore, we can attach an ordering between two nodes if neither is a descendant of the other by using their position in the syntax tree; a node $a$ is before another node $b$ if it appears earlier in the tree, in which case we will write $a < b$.
 
 % TODO: is "to the left" sufficiently well defined?
 
-$$
-\begin{array}{rcl}
-leaves(c~i) & = & children(i) \\
-children(token) & = & \{token\} \\
-children(c~i) & = & \{c~i\} \\
-children((\overline{i})) & = & \bigcup\limits_n children(i_n) \\
-children([\overline{i}]) & = & \bigcup\limits_n children(i_n) \\
-\end{array}
-$$
+This section will also be strict about the distinction between an identifier and a symbol: an identifier is a node in the syntax tree, and it contains a symbol. As an example,
+
+\begin{minted}{text}
+{
+  def a = 1;
+  def a = 2;
+}
+\end{minted}
+
+\newcommand{\sym}{\ensuremath{\mathit{symbol}}}
+
+has two identifiers with the same symbol: ''a''. We will write $\sym(i)$ to denote the symbol of the identifier $i$.
+
+First, we wish to find all the identifiers that are in a binding position:
+
+\newcommand{\binders}{\ensuremath{\mathit{binders}}}
 
 $$
 \begin{array}{rcl}
-binders(c~i) & = & i_b \cup i_a \cup i_i \cup i_c \\
+\binders(c\{i\}) & = & i_b \cup i_a \cup i_i \cup i_c \\
 \text{where} & & \\
-i_b & = & \{ path(c~i) \mid path \in B_b \text{ of } c\} \\
-i_a & = & \{ path(c~i) \mid path \in B_a \text{ of } c\} \\
-i_i & = & \{ path(c~i) \mid (path, \_) \in B_i \text{ of } c\} \\
-i_c & = & \bigcup_{c'~i' \in leaves(c~i)} binders(c'~i') \\
+i_b & = & \{ path(i) \mid path \in B_b \text{ of } c\} \\
+i_a & = & \{ path(i) \mid path \in B_a \text{ of } c\} \\
+i_i & = & \{ path(i) \mid (path, \_) \in B_i \text{ of } c\} \\
+i_c & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\})} \binders(c'\{i'\}) \\
 \end{array}
 $$
 
-Define a mapping $\Gamma$ from $binders(root)$ to new unique symbols.
-
-Second we wish to determine the scope of each node in the tree. Similar to syntax constructions and their instances we introduce scope instances, where a scope instance $s'$ that is an instance of scope $s$ is given by
-
-$$ s' = (path, s, parent) $$
-
-where $parent$ is another scope instance, and the first component is the same path as in the scope except every $*$ is replaced by some $n$. Additionally we introduce a special scope instance $s'_r$ representing the root scope. We will further write $s'_c -> s'_p$ to mean $s'_p$ is the parent scope of $s'_c$, and $s' ->* s''$ as the reflexive, transitive closure of this relation. Since each node will be assigned to a single scope we will write $i \in s'$ to mean that $i$ belongs to scope instance $s'$, which then selects a unique scope instance per $i$.
-
-$$ root \in s_r $$
-
-% TODO: need to discuss difference between symbol and identifier, probably in the first section
+For example, using the instance for the inner-most \mintinline{syncon}{block} (writing it as $\syncon{block}\{i\}$) in our running example:
 
 $$
 \begin{array}{rcl}
-instantiate(c~i, path, (rep, \_, s)) & = & (specialize(rep, path), instantiate(c~i, path, s)) \\
-instantiate(c~i, path, near) & = & s' \text{ where } c~i \in s' \\
+\binders(\text{\mintinline{syncon}{block}}\{i\}) & = & i_b \cup i_a \cup i_i \cup i_c = \{\text{token}'a'\}\\
+\text{where} & & \\
+i_b & = & \{ path(i) \mid path \in \emptyset \} = \emptyset \\
+i_a & = & \{ path(i) \mid path \in \emptyset \} = \emptyset \\
+i_i & = & \{ path(i) \mid (path, \_) \in \emptyset \} = \emptyset \\
+i_c & = & \binders(\syncon{def}\{\ldots\}) = \{\text{token}'a'\} \\
 \end{array}
 $$
+
+Second, we need a mapping $\Gamma$ from $\binders(\rooti)$ to new unique symbols. The particular details of this mapping are unimportant, we merely require it to map different nodes to different symbols.
+
+Third, we wish to determine the scope of each node in the tree. Similar to syntax constructions and their instances we introduce scope instances, described by the following grammar:
+
+\newcommand{\rootscope}{\ensuremath{s'_{\rooti}}}
+
+\begin{grammar}
+<Scope-Instance> ::= '(' $paths$ ',' <Scope-Instance> ')'
+  \alt \rootscope
+\end{grammar}
+
+The first case represents most instances and consists of two components: a set of paths to the leaves it covers, and its parent scope instance. The second case is the root scope, to which $\rooti$ belongs.
+
+For example, the outer-most \mintinline{syncon}{block} instance in our running example introduces one scope instance:
+
+$$
+(\{[2, *, 1]\}, \rootscope)
+$$
+
+We will further write $s'_c -> s'_p$ to mean that $s'_p$ is the parent scope of $s'_c$, and $s' ->* s''$ as the reflexive, transitive closure of this relation. Since each node will be assigned to a single scope we will write $i \in s'$ to mean that $i$ belongs to scope instance $s'$, which then selects a unique scope instance per $i$.
+
+Additionally, we will define the scope instance of \rooti\ to be \rootscope, i.e.:
+
+$$ \rooti \in \rootscope $$
+
+\newcommand{\instantiate}{\ensuremath{\mathit{instantiate}}}
+
+Given a scope $s$ and a path $p$ to a leaf, both belonging to an instance $c\{i\}$, the scope instance $s'$ of $s$ is given by $s' = \instantiate(c\{i\}, p, s)$:
+
+$$
+\begin{array}{rcl}
+\instantiate(c\{i\}, p, near) & = & s' \text{ where } c\{i\} \in s' \\
+\instantiate(c\{i\}, p, \text{(}rep, P, s\text{)}) & = & \text{(}P', parent\text{)} \\
+\text{where} & & \\
+rep' & = & \specialize(rep, p) \\
+P' & = & \{\specialize(p', rep') \mid p' \in P\} \\
+parent & = & \instantiate(c\{i\}, p, s) \\
+\end{array}
+$$
+
+We are now ready to determine the scope instance any non-root leaf belongs to. Given a leaf $i$, that is a leaf of $c\{i_p\}$, find the scope $s$ in $c$ that covers $i$, then instantiate it:
 
 $$
 \inference{
-  i \in leaves(c~i_p) &
-  path(c~i_p) = \{i\} &
+  i \in \leaves(c\{i_p\}) &
+  path(i_p) = \{i\} &
   path \subseteq path' \\
-  path' \in paths &
-  (\_, paths, \_) = s \in scopes \text{ of } c
-}{i \in instantiate(c~i_p, path, s)}
+  path' \in \cover(s) &
+  s \in scopes \text{ of } c
+}{i \in \instantiate(c\{i_p\}, path, s)}
 $$
 
-We can now start considering actual bindings. For each node we will compute a set of available bindings, where each binding is represented by a tuple $(sym, s', gensym)$. The first two components denote that $sym$ is defined in scope $s'$, while the last component is the newly generated symbol (from $\Gamma$ above) that will replace it.
+We can now start considering actual bindings. For each node we will compute a set of available bound symbols. Each binding is represented by a 3-tuple consisting of a symbol, a scope instance, and a generated symbol. The first two components denote that the symbol definition is in the given scope instance, while the last component is the generated replacement symbol from $\Gamma$ above.
 
-The $lookup$ function below defines shadowing behavior: a binding of a symbol in a child scope shadows the same symbol in a parent scope. The first case also assumes that we will never produce a binding set with more than one element that share the first two components, which would represent a redefinition of a symbol in the same scope.
+As an example, $\{(\mathit{foo}, s'_1, \mathit{bar}), (\mathit{foo}, s'_2, \mathit{baz})\}$ has two bindings of the symbol $\mathit{foo}$, one bound in $s'_1$, the other in $s'_2$, replaced by $\mathit{bar}$ and $\mathit{baz}$ respectively.
+
+\newcommand{\lookup}{\ensuremath{\mathit{lookup}}}
+
+The \lookup\ function below defines shadowing behavior: a binding of a symbol in a child scope shadows the same symbol in a parent scope. The first case also assumes that we will never produce a binding set with more than one element that share the first two components, which would represent a redefinition of a symbol in the same scope.
 
 $$
-lookup(sym, s', \gamma) =
+\lookup(sym, s', \gamma) =
 \begin{cases}
-gensym & (sym, s', gensym) \in \gamma \\
-lookup(sym, s'', \gamma) & (sym, s', \_) \not\in \gamma \land s' -> s'' \\
+\mathit{sym}' & (sym, s', \mathit{sym}') \in \gamma \\
+\lookup(sym, s'', \gamma) & (sym, s', \_) \not\in \gamma \land s' -> s'' \\
 \bot & (sym, s', \_) \not\in \gamma \land s' = s_r
 \end{cases}
 $$
 
 At this point we have our definitions for binding errors: an unbound symbol produces $\bot$ during lookup, while a redefinition produces a binding set where two or more elements share the first two components.
 
-The latter error has some subtleties. We could defer the error until $lookup$ would find multiple choices, i.e. make it an error to have an ambiguous reference instead of making it an error to redefine a symbol, but the latter tends to be a programming error even if it does not lead to any ambiguity, so it was chosen instead.
+The latter error has some subtleties. We could defer the error until $\lookup$ would find multiple choices, i.e. make it an error to have an ambiguous reference instead of making it an error to redefine a symbol, but the latter tends to be a programming error even if it does not lead to any ambiguity.
 
-The exported ''before'' and ''after'' bindings of an instance $c~i \in s'$, written as $E_b(c~i)$ and $E_a(c~i)$ respectively, are given by:
+The exported ''before'' and ''after'' bindings of an instance $c\{i\} \in s'$, written as $E_b(c\{i\})$ and $E_a(c\{i\})$ respectively, are given by:
 
 $$
 \begin{array}{rcl}
-E_b(c~i) & = & immediate \cup transitive \\
+E_b(c\{i\}) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-transitive & = & \bigcup_{c'~i' \in leaves(c~i), c'~i' \in s'} E_b(c'~i') \\
-immediate & = & \bigcup_{path \in B_b} \{(symbol(path(c~i)), s', \Gamma(path(c~i)))\}
+\mathit{transitive} & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\}), c'\{i'\} \in s'} E_b(c'\{i'\}) \\
+\mathit{immediate} & = & \bigcup_{path \in B_b} \{(\sym(path(c\{i\})), s', \Gamma(path(c\{i\})))\}
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-E_a(c~i) & = & immediate \cup transitive \\
+E_a(c\{i\}) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-transitive & = & \bigcup_{c'~i' \in leaves(c~i), c'~i' \in s'} E_a(c'~i') \\
-immediate & = & \bigcup_{path \in B_a} \{(symbol(path(c~i)), s', \Gamma(path(c~i)))\}
+\mathit{transitive} & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\}), c'\{i'\} \in s'} E_a(c'\{i'\}) \\
+\mathit{immediate} & = & \bigcup_{path \in B_a} \{(\sym(path(c\{i\})), s', \Gamma(path(c\{i\})))\}
 \end{array}
 $$
 
-Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in leaves(c~i_p)$ where $path(c~i_p) = \{i\}$ is given by $E_i(i)$:
+Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in \leaves(c\{i_p\})$ where $path(i_p) = \{i\}$, is given by $E_i(i)$:
 
 % TODO: there are some rather complicated things we range over in some \bigcup(s), need a better way to write that
 
 $$
-\bigcup_{p_i, path \subseteq path', path' \in p, (p_i, p) \in B_i \text{ of } c} \{(symbol(p(c~i_p)), s', \Gamma(p(c~i)))\} \text{ where } p(c~i_p) \in s'
-$$
-$$
-above \cup E_i(c~i_p)
+\begin{array}{rcl}
+E_i(\rooti) & = & \emptyset \\
+E_i(i) & = & E_i(c\{i_p\})\ \cup \\
+& & \{ symbol(p(i_p)) \mid (p, P) \in B_i \land \exists p' \in P.\ path \subseteq p'\} \\
+\end{array}
 $$
 
-With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from 'Identifier' with a newly generated symbol. Given an identifier $ident \in leaves(c~i)$ with scope $ident \in s'$, $path(c~i) = \{ident\}$, and $syntax$ being the syntax description of $c$, we will only perform the substitution if $path(syntax) = \text{'Identifier'}$.
+Note the difference between $E_a(i)$, $E_b(i)$, and $E_i(i)$: the former two give the set of bindings \emph{exported} by $i$, while the latter gives the set of bindings \emph{usable} in $i$.
+
+% TODO: MARK: I've gotten this far in the formalization "rewrite", everything beyond this point has only been update to be consistent in syntax (i.e. c~i vs c\{i\})
+
+With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from 'Identifier' (as opposed to a token literal) with a newly generated symbol. Given an identifier $ident \in \leaves(c\{i\})$ with scope $ident \in s'$, $path(c\{i\}) = \{ident\}$, and $syntax$ being the syntax description of $c$, we will only perform the below substitution if $path(syntax) = \text{'Identifier'}$.
 
 $$
 \begin{array}{rcl}
-symbol(ident) & <- &
+\sym(ident) & <- &
 \begin{cases}
-\Gamma(ident) & ident \in binders(root) \\
-lookup(symbol(ident), s', \gamma) & ident \not\in binders(root) \\
+\Gamma(ident) & ident \in \binders(\rooti) \\
+\lookup(\sym(ident), s', \gamma) & ident \not\in \binders(\rooti) \\
 \end{cases} \\
 \text{where} & & \\
 \gamma & = & a \cup b \cup E_i(ident) \\
-a & = & \bigcup_{c'~i' \in s'' \land s' ->* s'' \land c'~i' < ident} E_a(c'~i') \\
-b & = & \bigcup_{c'~i' \in s'' \land s' ->* s'' \land c'~i' > ident} E_b(c'~i') \\
+a & = & \bigcup_{c'\{i'\} \in s'' \land s' ->* s'' \land c'\{i'\} < ident} E_a(c'\{i'\}) \\
+b & = & \bigcup_{c'\{i'\} \in s'' \land s' ->* s'' \land c'\{i'\} > ident} E_b(c'\{i'\}) \\
 \end{array}
 $$
+
+\section{Expansion} \label{sec:expansion-formalization}
+
+Expanding the instance of a syntax construction is relatively straightforward, but the formalization turns out to be surprisingly involved. The base idea is that an expansion is a template into which we splice sub-trees from the instance we are expanding, similar to pattern based macros in Lisp tradition.
+
+The process is made somewhat more complicated by the presence of EBNF operators that generate lists, which must be reduced to a single sub-tree through folds. To perform such a fold we require specific paths to each of the elements to be folded over, to be handed to $\specialize$ later:
+
+\newcommand{\specs}{\ensuremath{\mathit{specs}}}
+
+$$
+\begin{array}{rcl}
+\specs([], i) & = & \{[]\} \\
+\specs(n:path, (\overline{i})) & = & \{n : p \mid p \in \specs(path, i_n)\} \\
+\specs(n:path, [\overline{i}]) & = & \{n : p \mid p \in \specs(path, i_n)\} \\
+\specs(*:path, [\overline{i}]) & = & \bigcup\limits_{n} \{n:p \mid p \in \specs(path, i_n)\} \\
+\end{array}
+$$
+
+Note that while this function uses set-notation, the order of the paths will be important while folding. The order is easily recovered however using a simple lexicographic sorting of the paths.
+
+As an example, consider the outer-most \mintinline{syncon}{block} instance (covering all lines) obtained from the code in Listing~\ref{lst:formal-file}. It has the following form:
+
+$$
+\begin{array}{l}
+\text{\mintinline{syncon}{block}}\{ \\
+\quad \text{token}'\{' \\
+\quad \text{[} \enspace \text{(} \enspace \text{\mintinline{syncon}{def}}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
+\quad \hphantom{\text{[}} \enspace \text{(} \enspace \text{\mintinline{syncon}{sum}}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \enspace \text{]} \\
+\quad \text{token}'\}' \enspace \} \\
+\end{array}
+$$
+
+As such $\specs([2, *, 1], \syncon{block}\{\ldots\}) = [[2, 1, 1], [2, 2, 1]]$.
+
+\newcommand{\expand}{\ensuremath{\mathit{expand}}}
+
+Expansion (via $\expand$ below) then traverses the template (the fourth argument, $e_c$), while keeping track of the current item in a fold ($spec$), the related accumulators ($\overline{acc}$), and the instance being expanded ($inst$). Most cases are fairly straightforward:
+
+$$
+\begin{array}{rcl}
+\expand(inst, spec, \overline{acc}, path) & = & i \text{ where } \specialize(path, spec)(inst) = \{i\} \\
+\expand(inst, spec, \overline{acc}, \text{acc}~n) & = & acc_n \\
+\expand(inst, spec, \overline{acc}, c\{i\}) & = & c\{\enspace \expand(inst, spec, \overline{acc}, i) \enspace \} \\
+\expand(inst, spec, \overline{acc}, token) & = & token \\
+\expand(inst, spec, \overline{acc}, (\, \overline{i} \,)) & = & (\enspace \overline{\expand(inst, spec, \overline{acc}, i_n)} \enspace) \\
+\expand(inst, spec, \overline{acc}, [\, \overline{i}] \,) & = & [\enspace \overline{\expand(inst, spec, \overline{acc}, i_n)} \enspace] \\
+\end{array}
+$$
+The one remaining case, foldl, is somewhat more involved:
+$$
+\begin{array}{rcl}
+\expand(inst, spec, \overline{acc}, \text{foldl}~path~f~i) & = & \mathit{foldl}(f', f_0, specs') \\
+\end{array}
+$$
+where
+$$
+\begin{array}{rcl}
+f' & = & \lambda spec'~acc'.~ \expand(inst, spec', acc'~\overline{acc}, f) \\
+f_0 & = & \expand(inst, spec, \overline{acc}, i) \\
+specs' & = & \specs(\specialize(path, spec), inst) \\
+\end{array}
+$$
+
+and $\mathit{foldl}$ is a regular left fold over a list.
+
+As an example, \syncon{block} has the following expansion template:
+
+$$
+\begin{array}{l}
+\text{foldl} \enspace [2, *, 1] \\
+\qquad \syncon{coreseq}\{ \enspace \text{(} \enspace \text{token}'(' \enspace \text{token}'seq' \enspace \text{acc}~0 \enspace [2, *, 1] \enspace \text{token}')' \enspace \text{)} \enspace \} \\
+\qquad \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \} \\
+\end{array}
+$$
+
+Expanding the instance given above proceeds as follows, using $i$ to refer to that instance:
+
+$$
+\begin{array}{l}
+\expand(i, [], [], \text{foldl}~[2, *, 1]~\syncon{coreseq}\{\ldots\}~\syncon{corelit}\{\ldots\}) \\
+\qquad = \mathit{foldl}(f', f_0, specs') \\
+\end{array}
+$$
+where
+$$
+\begin{array}{rcl}
+f' & = & \lambda spec'~acc'.~ \expand(i, spec', [acc'], \syncon{corelit}\{\ldots\}) \\
+f_0 & = & \expand(i, [], [], \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \})\\
+& = & \syncon{corelit}\{ \enspace \expand(i, [], [], \text{(} \enspace \text{token}'0' \enspace \text{)}) \enspace \} \\
+& = & \syncon{corelit}\{ \enspace \text{(} \enspace \expand(i, [], [], \text{token}'0') \enspace \text{)} \enspace \} \\
+& = & \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \} \\
+specs' & = & \specs(\specialize([2, *, 1], []), i) \\
+& = & \specs([2, *, 1], i) \\
+& = & [[2, 1, 1], [2, 2, 1]] \\
+\end{array}
+$$
+
+$\mathit{foldl}$ will then call $f'$ twice, once with $spec' = [2, 1, 1]$ and $acc' = f_0$, and once with $spec' = [2, 2, 1]$ and $acc' = f_1$, where $f_1$ is the result of the previous call. It is here useful to note that a sub-tree that does not contain either $\text{acc}~n$ or a $path$ always expands to itself, hence we will omit those expansions below.
+
+The first $f'$ call proceeds as follows:
+
+$$
+\begin{array}{rcl}
+f'~[2, 1, 1]~f_0 & = & \expand(i, [2, 1, 1], [f_0], \text{\mintinline{syncon}{coreseq}}\{\enspace \text{(}\ldots\text{)} \enspace \}) \\
+& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \expand(i, [2, 1, 1], [f_0], \text{(} \ldots \text{)}) \enspace \} \\
+& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
+& & \quad \text{token}'(' \\
+& & \quad \text{token}'seq' \\
+& & \quad \expand(i, [2, 1, 1], [f_0], \text{acc}~0) \\
+& & \quad \expand(i, [2, 1, 1], [f_0], [2, *, 1]) \\
+& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
+& & \quad \text{token}'(' \\
+& & \quad \text{token}'seq' \\
+& & \quad f_0 \\
+& & \quad \text{\mintinline{syncon}{def}}\{\ldots\} \text{ since} \\
+& & \qquad \specialize([2, *, 1], [2, 1, 1])(i) \\
+& & \qquad \quad = [2, 1, 1](i) \\
+& & \qquad \quad = \{\text{\mintinline{syncon}{def}}\{\ldots\}\} \\
+& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+& = & f_1 \\
+\end{array}
+$$
+
+The second call, with the identical steps omitted, then follows:
+
+$$
+\begin{array}{rcl}
+f'~[2, 2, 1]~f_1 & = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
+& & \quad \text{token}'(' \\
+& & \quad \text{token}'seq' \\
+& & \quad \expand(i, [2, 2, 1], [f_1], \text{acc}~0) \\
+& & \quad \expand(i, [2, 2, 1], [f_1], [2, *, 1]) \\
+& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
+& & \quad \text{token}'(' \\
+& & \quad \text{token}'seq' \\
+& & \quad f_1 \\
+& & \quad \text{\mintinline{syncon}{sum}}\{\ldots\} \text{ since} \\
+& & \qquad \specialize([2, *, 1], [2, 2, 1])(i) \\
+& & \qquad \quad = [2, 2, 1](i) \\
+& & \qquad \quad = \{\text{\mintinline{syncon}{sum}}\{\ldots\}\} \\
+& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+\end{array}
+$$
+
+% TODO: this is not the most understandable justification, to say the least. there is a part of an alternate explanation below it
+At this point we can consider termination guarantees: the expansion of a single syntax construction instance must terminate. We see this easily from the definition of $\expand$ and the observation that the expansion template is finite. Furthermore, since syntax constructions may not recursively expand into instances of themselves (neither directly nor indirectly), the complete expansion of a syntax tree must also terminate. We can see this by noting that when we expand an instance of a syntax construction $c$ then none of the instances introduced by the expansion (i.e. not the ones copied over from the previous instance) are instances of $c$, nor can they expand into instances of $c$. To expand those instances we thus never need $c$, i.e., the number of syntax constructions required for expansion is reduced by one. Since the number of syntax construction is finite we will eventually reach a point where we cannot expand any further since no remaining syntax construction has an expansion, i.e., the syntax tree is fully expanded.
+
+% We can see this by forming a directed acyclic graph where there is an edge from a syntax construction to another if the first might expand to a syntax tree containing the other, then sorting the syntax constructions in topological order. If we then expand all occurrences of the first syntax construction (call it $c$) the resulting syntax tree contains no instances of $c$, nor can an instance of $c$ occur from further expansion of other syntax construction. Expanding the second syntax construction similarly removes it, etc., until
 
 \section{Expansion Checking} \label{sec:expansion-checking-formalization}
 
@@ -1217,9 +1740,9 @@ The idea here is that no actual instance will have greater requirements on its s
 More concretely, given a syntax construction instance $c~i$ where all identifiers have different symbols and all child instances are in fact placeholders, and its expansion $e$, then an error might be introduced if one of the following is true:
 
 \begin{enumerate}
-  \item There is a placeholder $p'$ somewhere in $e$, copied from $p$ in $c~i$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
-  \item $E_b(e) \setminus E_b(c~i) \neq \emptyset$ or $E_a(e) \setminus E_a(c~i) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
-  \item Any symbol in a referencing identifier in $e$ that is unbound also appears unbound in a referencing identifier in $c~i$.
+  \item There is a placeholder $p'$ somewhere in $e$, copied from $p$ in $c\{i\}$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
+  \item $E_b(e) \setminus E_b(c\{i\}) \neq \emptyset$ or $E_a(e) \setminus E_a(c\{i\}) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
+  \item Any symbol in a referencing identifier in $e$ that is unbound also appears unbound in a referencing identifier in $c\{i\}$.
 \end{enumerate}
 
 The third point warrants further elaboration. The checking procedure examines an instance in isolation, i.e. it is not a sub-tree of some syntax tree. This means that any identifier that appears in a referencing position is unbound, which is an error. However, if the same instance appeared in a syntax tree and that tree had no binding errors, then all those identifiers must be bound in that context. Swapping the instance for its expansion and placing it in the same context then satisfies the same references in the expansion. A new unbound error with a new symbol would not have this guarantee and might thus introduce an error where there were none before.
@@ -1228,7 +1751,7 @@ Checking the expansion definition of a syntax construction then becomes a matter
 
 A 'zero or one' repetition ($?$) clearly requires two variations, but the unbounded repetitions ($*$ and $+$) are less clear.
 
-A fold over a '$*$' repetition could result in the initial accumulator value only, or one or more iterations of the actual folding template. The folding template can only use the accumulator atomically, so it will essentially wrap it in some other expression, possibly copied in multiple places. It is the hypothesis of this thesis that errors can occur either when fold and initial value interact, or when a fold interacts with a previous fold, and that no such interaction requires multiple folds to appear, because of the limited capabilities of each fold. If this holds true then all possible errors should appear by simply checking 0, 1, and 2 repetitions. Similarly, a '$+$' repetition could be used in a $fold1$ fold which would require 3 repetitions to exhibit two wrapped applications of the fold template.
+A fold over a '$*$' repetition could result in the initial accumulator value only, or one or more iterations of the actual folding template. The folding template can only use the accumulator atomically, so it will essentially wrap it in some other expression, possibly copied in multiple places. It is the hypothesis of this thesis that errors can occur either when fold and initial value interact, or when a fold interacts with a previous fold, and that no such interaction requires multiple folds to appear, because of the limited capabilities of each fold. If this holds true then all possible errors should appear by simply checking 0, 1, and 2 repetitions. Similarly, a '$+$' repetition could be used in a $\mathit{fold1}$ fold which would require 3 repetitions to exhibit two wrapped applications of the fold template.
 
 The $gen$ function, given below, generates the necessary variations. Note that it is not written as a pure function, the first two cases should generate new unique results every time they are called. Also note that the third case (sequences) and $rep$ should be considered to generate one variation per choice of variation from the sets generated by their children, basically a set cross-product. The nodes of a syntax description that do not interact with name binding can be largely ignored, except that something must be in their place in the instance, otherwise paths would not lead to the correct node in the instance.
 
@@ -1251,32 +1774,40 @@ $$
 
 Nested repetitions incur many more variations as we wish to be sure to capture all possible error interactions. For example, two consecutive '$*$' repetitions produce $3 * 3 = 9$ variations, while two nested '$*$' repetitions produce $1 + 3 + 3*3 = 12$ variations.
 
+% TODO: we make no mention here or elsewhere about how to check that the syntax types agree during expansion. Presumably this is easy to do, basically compare to the syntax description and check that repr(type-in-syntax) = repr(type-in-instance) for every expansion in the expansion checking phase
+
 \chapter{Evaluation} \label{sec:evaluation}
 
 The evaluation of this thesis is largely empirical and based on case studies facilitated by a proof of concept implementation of the algorithms described in the previous section, along with a small interpreter for a core language. An overview of this implementation is given in Section~\ref{sec:implementation}.
 
 The actual evaluation consists of case studies of expressibility (Section~\ref{sec:case-studies}), reuse of language feature from one language in another (Section~\ref{sec:language-composition}), a brief examination of the correctness of the implementations in the case studies (Section~\ref{sec:correctness-and-performance}), a few performance metrics of the implementation (Section~\ref{sec:performance}), and finally an examination of the errors presented to a user when something goes wrong (Section~\ref{sec:error-reporting}).
 
-For evaluation two programming languages have been implemented: a subset of Lua and a subset of OCaml. The former evaluates the expressibility of a relatively standard imperative language, while the latter evaluates the expressibility of  a relatively standard functional language, with an extra focus on pattern matching.
+For evaluation two programming languages have been implemented: a subset of Lua\footnote{https://www.lua.org/} and a subset of OCaml\footnote{https://ocaml.org/}. The former evaluates the expressibility of a relatively standard untyped, imperative language, while the latter evaluates the expressibility of  a relatively standard functional language, with an extra focus on pattern matching.
 
-For each of the languages a few interesting features are discussed, including their implementation, along with several weaknesses of the system.
+For each of the languages a few interesting features are discussed, including their implementation, along with several limitations of the system.
 
 \section{Implementation} \label{sec:implementation}
 
+\begin{figure}[t]
+\includegraphics[width=\textwidth]{resources/implementation-flowchart}
+\caption{The components that make up the implementation, and their connections}
+\label{fig:implementation-flowchart}
+\end{figure}
+
 This section contains a high level overview of the proof of concept implementation of the ideas in this thesis.
 
-The implementation is written in Haskell and is available at (TODO: refer to public repository, with a specific tag or commit). It is structured similarly to a staged compiler. The stages are as follows:
+The implementation is written in Haskell and is available at (TODO: refer to public repository, with a specific tag or commit). It is structured similarly to compiler with multiple phases. The phases are as follows (also see the overview in Figure~\ref{fig:implementation-flowchart}):
 
 \begin{description}
   \item[Lexer] The lexer is intended to be the simplest possible lexer that still produces results suitable for the grammars later generated by the syntax constructions. It lexes everything as identifiers, symbols, or string, integer or float literals. Most adjacent punctuation and special characters are merged into single symbols, with a few exceptions to create behavior similar to other programming languages. For example, parentheses will never merge, thus \mintinline{c}{(a++)} will lex as \mintinline{syncon}{symbol('(')}, \mintinline{syncon}{identifier('a')}, \mintinline{syncon}{symbol('++')} and \mintinline{syncon}{symbol(')')}.
 
-  \item[Syntax construction parser] The syntax construction parser is a simple context free grammar, parsed using an Earley parser. It is somewhat complicated by the need to parse arbitrary source code in the expansion description. This is solved by merging the syntax construction grammar with the generated grammar from the source code parser. Due to a limitation in the parsing algorithm used the grammar cannot be modified during parsing, thus the expansion description of a syntax construction cannot use syntax constructions defined in the same file, only ones defined in an earlier file.
+  \item[Syntax construction parser] The syntax construction parser is a simple context free grammar, parsed using an Earley \cite{Earley1970An-Efficient-Co} parser. It is somewhat complicated by the need to parse arbitrary source code in the expansion description. This is solved by merging the syntax construction grammar with the generated grammar from the source code parser. Due to a limitation in the parsing algorithm used the grammar cannot be modified during parsing, thus the expansion description of a syntax construction cannot use syntax constructions defined in the same file, only ones defined in an earlier file.
 
   \item[Syntax construction name resolver] The syntax construction name resolver will prepare the parsed syntax constructions for use later in the implementation. All names used are resolved to locations in the syntax description and an expansion function is produced for syntax constructions that are not marked as builtin. Note that this phase does some checking of the syntax construction, but only what is necessary to produce the binding information and expansion function. The checking here is not sufficient to ensure that no binding errors appear during expansion.
 
-  \item[Expansion checker] The expansion checker checks that an expansion can never introduce an error during expansion. Similar to type checking and various other forms of static analysis the expansion checker is not a necessary part, but its absence does of course remove any guarantees on errors.
+  \item[Expansion checker] The expansion checker checks that an expansion can never introduce an error during expansion. Similar to type checking and various other forms of static analysis, the expansion checker is not a necessary part, but its absence does of course remove any guarantees on errors.
 
-  \item[Source code parser] The source code parser generates a context free grammar from a set of syntax constructions and then uses it to parse source code using an Earley parser.
+  \item[Grammar generator] The grammar generator generates a context free grammar from a set of syntax constructions and which will later be used to parse source code using an Earley \cite{Earley1970An-Efficient-Co} parser.
   \begin{description}
     \item[Ambiguity detection] If the grammar is ambiguous, and the source code being parsed exposes this ambiguity, one parse tree will be produced for each possible parse, and all of them will be compared to determine the ambiguous sections of the source code.
   \end{description}
@@ -1285,7 +1816,7 @@ The implementation is written in Haskell and is available at (TODO: refer to pub
 
   \item[Source code expander] The source code expander repeatedly finds a single syntax construction to expand, uses its expansion function, then runs the name resolver over the result, until all remaining syntax constructions are marked as builtin. This is the simplest implementation that will always be correct, but it almost always does far more work than necessary. See Section~\ref{sec:performance} for more information.
 
-  \item[Core language interpreter] The core language interpreter evaluates a syntax tree composed only of syntax constructions that are part of the core language described in Section~\ref{sec:core-language}, but is largely unrelated to syntax constructions as such. It is only used for validation in Chapter~\ref{sec:evaluation}.
+  \item[Core language interpreter] The core language interpreter evaluates a syntax tree composed only of syntax constructions that are part of the core language described in Section~\ref{sec:core-language}, but is largely unrelated to syntax constructions as such. It is only used for validation in Section~\ref{sec:correctness-and-performance}.
 \end{description}
 
 \subsection{Core Language} \label{sec:core-language}
@@ -1296,7 +1827,7 @@ Both languages are implemented using the same underlying language, i.e. the same
 \begin{itemize}
   \item Sequential composition.
   \item Non-nested bindings, i.e \mintinline{syncon}{defAfter} and \mintinline{syncon}{defAround}. % TODO: probably refer to a previous definition / explanation of this
-  \item Builtin, language provided values using special syntax, such as \mintinline{syncon}{#unit}, \mintinline{syncon}{#true} and \mintinline{syncon}{#plus}. Values that provide more complex features include:
+  \item Builtin values using special syntax, such as \mintinline{syncon}{#unit}, \mintinline{syncon}{#true} and \mintinline{syncon}{#plus}. More complex features introduced via such values include:
   \begin{description}
     \item[Conditional execution] via \mintinline{syncon}{#if}.
     \item[Fixpoint operator] via \mintinline{syncon}{#fix}.
@@ -1304,39 +1835,71 @@ Both languages are implemented using the same underlying language, i.e. the same
     \item[Lists] via \mintinline{syncon}{#cons}, \mintinline{syncon}{#head}, \mintinline{syncon}{#tail}, and \mintinline{syncon}{#nil}.
     \item[Continuations] via \mintinline{syncon}{#callcc}.
   \end{description}
-  \item Expression functions. Syntactically similar to a function (\mintinline{syncon}{efun x. body} vs. \mintinline{syncon}{fun x. body}) these work around a limitation in syntax constructions. They are described in more detail in the next section, but in brief: they are functions that must be applied immediately and do not introduce a scope. They are used to work around the atomic nature of sub-constructions.
+  \item Expression functions. Syntactically similar to a function (\mintinline{syncon}{efun x. body} vs. \mintinline{syncon}{fun x. body}) these work around a limitation in syntax constructions. They are described in more detail in the next section, but in brief: they are functions that take an expression and are evaluated at compile-time.
 \end{itemize}
 
 \subsubsection{Expression Functions} \label{sec:efun-drawbacks}
 
-Several syntax constructions in the evaluated languages turn out to require some information about their context, be it what value to pattern match on or where to divert control flow to. Some of these cases can be solved by having the syntax construction produce a function and letting its context provide the necessary information via a function argument, but not all.
+Several syntax constructions in the evaluated languages turn out to require some information about their context, some examples include:
 
-Problems arise when the syntax construction both requires information from its context, and additionally needs to expose bindings via \mintinline{syncon}{#bind before} or \mintinline{syncon}{#bind after}. Functions introduce a scope around their body, preventing any such bindings from being visible.
+\begin{itemize}
+  \item A \mintinline{lua}{return} statement must exit the surrounding function.
+  \item A pattern in a pattern match needs a value to compare to.
+  \item A \mintinline{lua}{break} statement must exit the surrounding loop.
+\end{itemize}
 
-To solve this issue this thesis adds an additional kind of function that must be applied immediately and does not introduce a scope around its body. They essentially enable syntax constructions to not only be syntax, but also functions from syntax to syntax. All expression function application should be evaluated \emph{before} other evaluation, since they are intended to model functions during the expansion process, which should be complete before evaluation.
+The only way to connect multiple syntax constructions in their current design is through the name binding system: one construction defines a binding, another uses it. This requires user interaction however, the identifiers must be in the source code written by the user. None of the examples above follow such a pattern, they are all expected to obtain their information through their lexical context.
 
-There are two problems with this solution. Firstly, expression functions are a very unsound addition to the core language. Consider this expression:
+In some cases this can be solved through a function, for example, a pattern might expand to a function that expects the value to compare to as its argument. Problems arise when the syntax construction both requires information from its context, and additionally needs to expose bindings via \syncon{#bind before} or \syncon{#bind after}. Functions introduce a scope around their body, preventing any such bindings from being visible.
+
+To solve this issue we extend our core language with an additional kind of function, one that takes an expression as an argument and evaluates at compile-time. Essentially an anonymous macro.
+
+For example,
+
+\begin{minted}{syncon}
+(efun a. #add a a) (#add 3 4)
+// evaluates to
+#add (#add 3 4) (#add 3 4)
+\end{minted}
+
+We define the syntax construction as follows:
+
+\begin{minted}{syncon}
+syntax exprfun:BExpression =
+  "efun" x:Identifier "." e:BExpression
+{
+  #bind x in e
+  builtin
+}
+\end{minted}
+
+Now we can let a pattern take the value to compare through an \syncon{efun}, and provide the bindings we need.
+
+The problem is that the above definition is insufficient; the binding semantics are not properly described.
+
+To demonstrate why, consider the following code:
 
 \begin{minted}{syncon}
 (efun a. defAfter x = a) x
 \end{minted}
 
-The expression is correct, binding-wise, \mintinline{syncon}{x} is bound inside the expression function and is then in scope on the outside. Evaluating the application of the expression functions produces the following expression however:
+\syncon{defAfter} creates a new name binding for the remainder of the scope, but does not allow a recursive definition; we could not replace \syncon{a} with \syncon{x} in the example since it is not bound. Evaluating the \syncon{efun} produces the following:
 
 \begin{minted}{syncon}
 defAfter x = x
 \end{minted}
 
-This is not correct, \mintinline{syncon}{x} is not in scope in the definition of \mintinline{syncon}{x}, thus this produces an error.
+The former produces no binding errors, but the latter does. Using a binding defined inside an \syncon{efun} in an argument to the same \syncon{efun} might create problems, but we have no way of expressing this restriction using syntax constructions. An expansion may thus appear to be correct to the expansion checker, since it preserves all specified binding semantics, and yet introduce a binding error when the \syncon{efun} is evaluated.
 
-The second problem is inconvenience, many syntax constructions suddenly need to take arguments and pass them on to their children, even though they themselves have no use of them, simply because the information is further away than the direct parent. This additionally has an impact on composing multiple languages. No new syntax constructions can be added in-between the syntax construction that gives the context and the one that uses it without threading the information, but the odds of a syntax construction from a different language being written to thread the same information seem minuscule, thus importing a syntax construction from a different language is unlikely to work if either language uses that kind of contextual information.
+The second problem one of inconvenience, many syntax constructions may now need to take arguments and pass them on to their children, even though they themselves have no use of them. For example, to get information from a loop to a \mintinline{lua}{break} statement it may need to be passed through many intermediate statements.
 
-Expression functions are thus clearly an undesirable solution, but a better option is left for future work.
+This additionally has an impact on composing multiple languages. No new syntax constructions can be added in-between the syntax construction that gives the context and the one that uses it without threading the information, but the odds of a syntax construction from a different language being written to thread the same information seem minuscule, thus importing a syntax construction from a different language is unlikely to work if either language uses that kind of contextual information.
+
+Expression functions are thus not the ideal solution, but a better option is left for future work.
 
 \section{Case Studies in Expressiveness} \label{sec:case-studies}
 
-This section evaluates the expressiveness of syntax constructions through a number of cases. The first two implement subsets of two pre-existing programming languages: OCaml and Lua. The former focuses on implementing pattern matching and a fairly standard functional programming language, while the latter focuses on implementing control flow commonly present in imperative programming languages. The final section examines several smaller examples not present in either language that present problems for syntax constructions.
-
+This section evaluates the expressiveness of syntax constructions through a number of cases. The first two implement subsets of two pre-existing programming languages: OCaml and Lua. The former focuses on implementing pattern matching and a fairly standard functional programming language, while the latter focuses on implementing control flow commonly present in imperative programming languages. The final section examines several smaller examples not present in either language that demonstrate limitations of syntax constructions.
 
 % TODO: probably write about efuns and their drawbacks separately from each language below, seems weird to either duplicate it, or to just have it in one of the language sections and not the other, since they should have no dependenceies on each other
 
@@ -1429,7 +1992,7 @@ The former implies a function, each pattern might be implemented as a function r
 
 Other pattern match systems implemented as macros (e.g. \cite{Tobin-Hochstadt2011Extensible-Patt}) tend to have a more complicated match macro, which constructs the final checking code and binding code by examining the actual contents and / or results of the patterns. Syntax constructions on the other hand have no such functionality, child nodes may only be treated atomically, i.e. moved, removed, or duplicated. As such the composing mechanism must be present in the pattern implementation, but it cannot be a function, since it would hide name bindings.
 
-The implementation in this thesis thus uses functions that do not introduce a new scope, the expression functions introduced and discussed in Section~\ref{sec:core-language}. They are used to model functions at a syntax level, they take syntax and produce syntax.
+As discussed in Section~\ref{sec:efun-drawbacks} we will instead use \syncon{efun}s, essentially anonymous macros.
 
 A pattern then becomes essentially a function taking a function to call if the match fails and a value to match against. Implementation becomes as follows:
 
@@ -1494,13 +2057,12 @@ syntax match:Expression =
 
 Note that the implementation is somewhat naive, for example no work is shared between the arms, even if there is overlap in the patterns, and there are no warnings for overlapping patterns or incomplete coverage.
 
-% TODO: not neutral, not objective
-The inability to express patterns in syntax constructions without the presence of an unsound construction in the core language (\mintinline{syncon}{efun}) signals a clear flaw in the method. The syntax descriptions and binding specifications on the other hand are clear and concise and may be considered a success.
+The syntax descriptions and binding specifications on the other hand are clear an concise and may be considered a success.
 
 \subsubsection{Patterns in Function Declarations}
 \label{sec:ocaml-function-argument-patterns}
 
-Patterns are however not limited only to the \mintinline{ocaml}{match} expression in OCaml, they can additionally be used in function definitions. The most common way of writing such a function uses \mintinline{ocaml}{let} with some syntax sugar to allow writing all the arguments next to the function name, instead of as part of nested \mintinline{ocaml}{fun} expressions. The two definitions below are equivalent, and we would like our OCaml subset to support both.
+Patterns are not limited only to the \mintinline{ocaml}{match} expression in OCaml, they can additionally be used in function definitions. The most common way of writing such a function uses \mintinline{ocaml}{let} with some syntax sugar to allow writing all the arguments next to the function name, instead of as part of nested \mintinline{ocaml}{fun} expressions. The two definitions below are equivalent, and we would like our OCaml subset to support both.
 
 \begin{minted}{ocaml}
 let add a b = a + b
@@ -1534,7 +2096,7 @@ defAfter add =
       #plus a b))
 \end{minted}
 
-where \mintinline{syncon}{<a>} and \mintinline{syncon}{<b>} are placeholders for the expansions of the patterns used for the two arguments. In this particular case both will be \mintinline{syncon}{efun}s ignoring their first argument and using \mintinline{syncon}{defAfter} to expose their second argument. This works, and will work for all sensible patterns we might define for OCaml, but there is a problem. Consider the following two patterns (their expansion is unimportant for the current discussion and thus elided):
+where \mintinline{syncon}{<a>} and \mintinline{syncon}{<b>} are placeholders for the expansions of the patterns used for the two arguments. In this particular case, both will be \mintinline{syncon}{efun}s ignoring their first argument and using \mintinline{syncon}{defAfter} to expose their second argument. This works, and will work for all sensible patterns we might define for OCaml, but there is a problem. Consider the following two patterns (their expansion is unimportant for the current discussion and thus elided):
 
 \begin{minted}{syncon}
 syntax equalPattern:Pattern =
@@ -1553,22 +2115,34 @@ syntax aroundPattern:Pattern =
 }
 \end{minted}
 
-\mintinline{syncon}{equalPattern} evaluates an expression and compares for equality, while \mintinline{syncon}{aroundPattern} is the same as \mintinline{syncon}{bindPattern} except it binds before as well as after. \mintinline{syncon}{aroundPattern} is the real problem, but we need \mintinline{syncon}{equalPattern} to expose it. Conceptually \mintinline{ocaml}{foo} below returns \mintinline{ocaml}{true} if its arguments are equal and produces an error (failed pattern match) otherwise.
+\mintinline{syncon}{equalPattern} evaluates an expression and compares for equality, while \mintinline{syncon}{aroundPattern} is the same as \mintinline{syncon}{bindPattern} except it binds before as well as after. \mintinline{syncon}{aroundPattern} is the real problem, but we need \mintinline{syncon}{equalPattern} to expose it.
+
+As an example of how these patterns might be used,
+
+\begin{minted}{ocaml}
+let foo a =(a) = true
+\end{minted}
+
+defines \mintinline{ocaml}{foo} to be a function that takes two arguments. The arguments are compared, and if they are equal, the function returns \mintinline{ocaml}{true}, otherwise it produces an error (failed pattern match).
+
+Swapping the two patterns produces the code below, which should ostensibly produce the same result:
 
 \begin{minted}{ocaml}
 let foo =(a) a = true
 \end{minted}
 
-This is not what happens however, instead an error is introduced during expansion. The expansion below once again uses \mintinline{syncon}{<a>} and \mintinline{syncon}{<b>} as placeholders for the expansions of \mintinline{syncon}{=(a)} and \mintinline{syncon}{a} respectively. We know that \mintinline{syncon}{<a>} refers to \mintinline{syncon}{a}, and that \mintinline{syncon}{<b>} binds this \mintinline{syncon}{a} using \mintinline{syncon}{#bind a before} and \mintinline{syncon}{#bind a after}. But \mintinline{syncon}{<a>} below cannot refer to anything defined by \mintinline{syncon}{<b>}; the latter is enclosed in a function, which introduces a scope and limits the availability of bound names.
+However, expanding the \mintinline{ocaml}{let} definition produces code equivalent to the following (using \syncon{<a>} for the expansion of \syncon{=(a)} and \syncon{<b>} for the expansion of \syncon{a}):
 
 \begin{minted}{syncon}
-defAfter foo =
+defAfter add =
   (fun x. <a> (fun _. #crash) x;
     (fun x. <b> (fun _. #crash) x;
-      undefined))
+      #plus a b))
 \end{minted}
 
-Expansion checking detects this and rejects the expansion specification, preventing an error from being introduced after expansion has started. The problem is that all patterns in OCaml only bind names after themselves, thus this expansion is fine for all cases we are interested in, but since anyone could add a new pattern that works differently we must handle such cases as well.
+The inner function introduces a binding for \mintinline{ocaml}{a} in its body, but the outer function uses this binding. Yet this is an error, since bindings introduced in the body of a function are not available outside of it.
+
+Expansion checking detects this and rejects the expansion specification, preventing an error from being introduced after expansion has started. The problem is that all patterns in OCaml that introduce bindings only do so for code appearing after themselves, thus this expansion is fine for all cases we are interested in. However, anyone could add a new pattern that works differently we must handle such cases as well.
 
 There are two plausible ways around this, neither of which is supported by syntax constructions at present.
 \begin{itemize}
@@ -1603,13 +2177,13 @@ syntax sequentialComposition:Expression =
 
 The resulting composed syntax is ambiguous however: a list literal of length greater than one will never be parsed unambiguously, there is nothing to distinguish the item separators from the sequential composition operator. The OCaml parser special cases this, parsing \mintinline{ocaml}{[1;2;3]} as a list of three elements and \mintinline{ocaml}{[(1;2;3)]} as a list of one element.
 
-Syntax constructions can implement this, but not in a convenient fashion. A first, almost convenient, approach would be to create a new syntax type, \mintinline{syncon}{Statement}, moving sequential composition to it and creating a new syntax construction consisting of a single \mintinline{syncon}{Expression}. This allows us to state when we want an expression including sequential composition (\mintinline{syncon}{Statement}) or excluding sequential composition (\mintinline{syncon}{Expression}). Most previous uses of \mintinline{syncon}{Expression} would now instead be \mintinline{syncon}{Statement}, except list literals.
+Syntax constructions can implement this, but not in a convenient fashion. A first, almost convenient, approach would be to create a new syntax type, for example named \mintinline{syncon}{Statement}, moving sequential composition to it and creating a new syntax construction consisting of a single \mintinline{syncon}{Expression}. This allows us to state when we want an expression including sequential composition (\mintinline{syncon}{Statement}) or excluding sequential composition (\mintinline{syncon}{Expression}). Most previous uses of \mintinline{syncon}{Expression} would now instead use \mintinline{syncon}{Statement}, except list literals.
 
 The first issue with this solution is partially that it is a workaround that requires changes in many places that very much requires each syntax construction to be considered in its context (thus breaking a design goal). The second issue is that it does not work: the original \mintinline{syncon}{Expression} contains syntax constructions with both lower and higher precedence than sequential composition. The rewrite above essentially gives sequential composition lower precedence than all constructions in \mintinline{syncon}{Expression}, thus altering how the language is parsed.
 
 A proper solution might instead require three syntax types: \mintinline{syncon}{ExpressionWith}, \mintinline{syncon}{ExpressionWithout}, and \mintinline{syncon}{ExpressionBase}. The last contains the syntax constructions that were in \mintinline{syncon}{Expression} with higher precedence than sequential composition, while the first two contain duplicates of the remaining syntax constructions, except for sequential composition, which is only present in \mintinline{syncon}{ExpressionWith}.
 
-This solution seems inconvenient enough to not really consider a solution, instead seeing at as a sign of a weakness with syntax constructions as presented in this thesis.
+This solution seems inconvenient enough to not really consider a solution, thus we will instead count it as a limitation of the system as currently designed.
 
 \subsection{An Imperative Language - Lua Subset} \label{sec:imperative-eval}
 
@@ -1640,10 +2214,10 @@ syntax while:Statement =
 
 Note that the body has syntax type \mintinline{syncon}{Block} as opposed to the more intuitive \mintinline{syncon}{Statement+}. This is due to a peculiarity of the Lua syntax, a block is a list of statements optionally terminated by a break or return statement, which is also the only place where a break or return statement is legal. Since the block structure appears in multiple constructs beside \mintinline{lua}{while} loops, e.g. \mintinline{lua}{function}s and \mintinline{lua}{if} statements, this formulation reduces code duplication.
 
-The definition of \mintinline{syncon}{Block} is as follows:
+We define a \syncon{Block} to expand to a \syncon{BExpression}, and define a single syntax construction \syncon{blockContent}:
 
 \begin{minted}{syncon}
-syntax type Block = Statement
+syntax type Block = BExpression
 
 syntax blockContent:Block =
   (stmnt:Statement ";"?)* ret:Terminator?
@@ -1705,7 +2279,8 @@ syntax local:Statement =
   #bind x after
   BExpression` fun _.
     defAfter `id(x) = #ref
-      (#deref `t(foldr e _ (e) (BExpression` #unit)))
+      (#deref `t(foldr e _ (e)
+                 (BExpression` #unit)))
 }
 \end{minted}
 
@@ -1739,9 +2314,9 @@ end
 In the case of nested functions a return statement should only return from the inner-most function. The syntax of a return statement is trivial to describe and can be seen below.
 
 \begin{minted}{syncon}
-syntax return:Statement = "return" value:Expression? {
-  <...>
-}
+syntax return:Statement =
+  "return" value:Expression?
+{ <...> }
 \end{minted}
 
 The implementation is rather less obvious. The return statement must transfer control flow to a point external to itself, namely to the caller of the enclosing function. However, the situation is rather similar to the \mintinline{lua}{break} statement (see Section~\ref{sec:lua-loops-and-break}), so we employ a similar solution: a function declaration introduces an abort function via \mintinline{syncon}{#callcc} and threads it to all statements via expression functions.
@@ -1762,8 +2337,10 @@ syntax function:Statement =
             (BExpression` fun `id(a). `t(next))
           foldr as next
             (BExpression` fun `id(as). `t(next))
-          (BExpression` fun _. #callcc (fun return.
-            `t(body) return (fun _. #crash)))))))
+          (BExpression`
+            fun _. #callcc (fun return.
+              `t(body) return
+                       (fun _. #crash)))))))
 }
 
 syntax return:Return = "return" e:Expression? {
@@ -1828,7 +2405,7 @@ syntax argList:ArgList =
 
 This seems clearly undesirable, assigning precedence affects more things than intended and rectifying the problem requires introducing a new syntax type that we most likely would not have wanted otherwise.
 
-\subsection{Smaller Self-contained Examples}
+\subsection{Other Limitations}
 
 \subsubsection{Variables in Different Domains}
 
@@ -1836,7 +2413,7 @@ This seems clearly undesirable, assigning precedence affects more things than in
 
 Many programming languages have bindings that are split in different domains, the most common example probably being a split between values and types. For example, Listing~\ref{lst:haskell-data-constructor-not-in-scope} shows the result of attempting to use an identifier representing a type in a value position: an unbound error. This despite the same identifier being used on the very next line, thus clearly being bound. The definitions end up in different domains where they neither conflict nor interact.
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{haskell}
 data T = V
 err1 = T -- Not in scope: data constructor ‘T’
@@ -1852,13 +2429,13 @@ err2 = case V of
 
 Additionally the patterns on the last two lines contain unbound identifiers, but the semantics differ based on the casing of the characters in their symbols. The first of the two matches against a data constructor (the domain was selected by the contents of the symbol), which must be bound, thus an error is produced, while the second binds \mintinline{syncon}{u} to the value of whatever is being matched.
 
-Syntax constructions have only a single domain of bindings, and does not allow differentiating identifiers based on the form of their symbols, and can thus not express the above at all.
+Syntax constructions have only a single domain of bindings, and does not allow differentiating identifiers based on the form of their symbols, and can thus not express the above at all. Adding such a capability seems possible however, but is left for future work.
 
 \subsubsection{Prolog Pattern Matching} \label{sec:prolog-pattern-matching}
 
-Section~\ref{sec:functional-pattern-matching} evaluates the formulation of a pattern matching system using syntax construction. However, the system implemented only needs to support the capabilities of OCaml, but other languages have pattern matching with more features. For example, Prolog allows matching an unbound variable twice in a pattern, with the semantic meaning of requiring the values at both positions to be equal. Listing~\ref{lst:prolog-absolute} shows a simple example.
+Section~\ref{sec:functional-pattern-matching} evaluates the formulation of a pattern matching system using syntax constructions, used in the OCaml subset. However, other programming languages have pattern matching with more features. For example, Prolog allows matching an unbound variable twice in a pattern, with the semantic meaning of requiring the values at both positions to be equal. Listing~\ref{lst:prolog-absolute} shows a simple example.
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{prolog}
 abs(A, B) :- A < 0, B is -A.
 abs(A, A) :- A >= 0.
@@ -1896,7 +2473,7 @@ Syntax constructions allow shadowing of definitions from an outer scope, thus th
 
 \section{Language Composition} \label{sec:language-composition}
 
-Lua does not normally have pattern matching or destructuring, but the implementation of OCaml in Section~\ref{sec:functional-eval} contains such features, so it seems wasteful to not use them. Section~\ref{sec:patterns-in-lua} details adding destructuring to pre-existing constructions that introduce bindings, while Section~\ref{sec:match-in-lua} attempts to add OCaml's \mintinline{ocaml}{match}-expression to Lua.
+This section evaluates the capabilities of syntax constructions in terms of language composition. Section~\ref{sec:patterns-in-lua} uses the patterns defined in the OCaml subset to implement destructuring in the Lua subset, while Section~\ref{sec:match-in-lua} attempts to import the \mintinline{ocaml}{match} expression into Lua.
 
 \subsection{Patterns in Lua} \label{sec:patterns-in-lua}
 
@@ -1910,7 +2487,8 @@ syntax local:Statement =
   #scope (e)
   BExpression` efun _. efun _.
     defAfter `id(x) = #ref
-      (#deref `t(foldr e _ (e) (BExpression` #unit)))
+      (#deref `t(foldr e _ (e)
+                 (BExpression` #unit)))
 }
 \end{minted}
 
@@ -1923,7 +2501,8 @@ syntax local:Statement =
   #scope (e)
   BExpression` efun _. efun _.
     `t(x) (fun _. #crash)
-      (#ref (#deref `t(foldr e _ (e) (BExpression` #unit))))
+      (#ref (#deref `t(foldr e _ (e)
+                       (BExpression` #unit))))
 }
 \end{minted}
 
@@ -1940,7 +2519,8 @@ syntax local:Statement =
     (fun expr. #callcc (fun done.
       (#callcc (fun fail. `t(x) fail expr);
        `t(x) (fun _. #crash) (#deref expr))))
-    (#ref (#deref `t(foldr e _ (e) (BExpression` #unit))))
+    (#ref (#deref `t(foldr e _ (e)
+                     (BExpression` #unit))))
 }
 syntax derefPattern:Pattern =
   "ref" p:Pattern
@@ -1957,21 +2537,25 @@ The remaining binding constructions in Lua (e.g. functions and for loops) can be
 % TODO: rewrite intro to this section after split into two sections
 Patterns can do more than simple destructuring, OCaml additionally has a \mintinline{ocaml}{match} construct that enables conditional execution based on which pattern matches a given value. Reusing this construct in Lua turns out to be problematic however, for a few reasons:
 
-\begin{itemize}
-\item First, OCaml consists largely of expressions while Lua makes a distinction between statements and expressions. As such, \mintinline{ocaml}{match} is an expression. In OCaml it makes sense to have a control flow construct as an expression, but in Lua most computation requires statements, thus we likely want \mintinline{ocaml}{match} to be a statement.
+\begin{enumerate}
+\item OCaml consists largely of expressions while Lua makes a distinction between statements and expressions. As such, \mintinline{ocaml}{match} is an expression. In OCaml it makes sense to have a control flow construct as an expression, but in Lua most computation requires statements, thus we likely want \mintinline{ocaml}{match} to be a statement.
 
-\item Second, we may consider that in a real world scenario the two languages would likely have been developed entirely independent of each other, i.e. the syntax type \mintinline{syncon}{Expression} of OCaml is distinct from the syntax type \mintinline{syncon}{Expression} of Lua.
+\item We may consider that in a real world scenario the two languages would likely have been developed entirely independent of each other, i.e. the syntax type \mintinline{syncon}{Expression} of OCaml is distinct from the syntax type \mintinline{syncon}{Expression} of Lua.
 
-\item Third, we only wish to bring in \mintinline{ocaml}{match}, not the entirety of OCaml; it should be possible to write Lua in each of the branches, not OCaml.
+\item We only wish to bring in \mintinline{ocaml}{match}, not the entirety of OCaml; it should be possible to write Lua in each of the branches, not OCaml.
 
-\item Fourth, the syntax of OCaml differs significantly from Lua. What is natural in one may very well not be in the other.
-\end{itemize}
+\item The syntax of OCaml differs significantly from Lua. What is natural in one may very well not be in the other.
+\end{enumerate}
 
 As such we have a few options for how to integrate \mintinline{ocaml}{match}. Broadly speaking, these options can be split in two groups: explicitly exposing the \mintinline{ocaml}{match} from OCaml, and creating a new syntax construction that expands into a \mintinline{ocaml}{match}, without exposing it.
+
+\subsubsection{Reusing \mintinline{ocaml}{match}}
 
 The former approach immediately runs into problems because of the second point above. To write \mintinline{ocaml}{match} as a statement we require a syntax construction of syntax type \mintinline{syncon}{Statement} consisting of a sole OCaml \mintinline{syncon}{Expression}, a form of bridging syntax construction. Additionally, to write a Lua statement inside a \mintinline{ocaml}{match} branch we require a bridge in the opposite direction. The combination of these two syntax constructions produce an ambiguous grammar however; they can nest any number of times when parsing a statement.
 
 In general, this problem will appear any time we wish to include a syntax construction that is recursive, i.e. that uses its own syntax type in the syntax description. % TODO: mention something about how to solve long term
+
+\subsubsection{Expanding to \mintinline{ocaml}{match}}
 
 The alternative reuse option is to create a new syntax construction that expands into a \mintinline{ocaml}{match}, i.e. to follow the tower of languages approach:
 
@@ -2007,26 +2591,36 @@ end
 
 Syntax constructions provide no semantics or specification of a core language, thus the choice of core language and a means to run programs in it are largely irrelevant to this thesis. However, we wish to know that the languages defined using syntax constructions have the correct semantics. As such, the syntax construction implementation contains a simple interpreter for the eager, largely functional core language briefly described in Section~\ref{sec:core-language}.
 
-A few programs, written in OCaml and Lua respectively, then form a sort of correctness test suite: if a program executes without any errors in the original implementation, and the syntax construction implementation can parse it, then the results should be the same no matter which of the two is used. The former requirement stems largely from the absence of type checking in syntax constructions, and the latter ensures that the program is part of the defined language subset.
+A few programs, written in OCaml and Lua respectively, then form a sort of correctness test suite: if a program executes without any errors in the original implementation, and the syntax construction implementation can parse it, then the results should be the same no matter which implementation runs it. The former requirement stems largely from the absence of type checking in syntax constructions, and the latter ensures that the program is part of the defined language subset.
 
-The testing is made slightly more complicated by syntax constructions not supporting importing. Program correctness is checked by comparing printed output, but printing functions tend to be defined externally, via some form of library, standard or otherwise. To smooth over this difference the actual programs tested are slightly different for the original implementations and the syntax construction implementations; they each contain a small prelude that define the same printing functions, but using different underlying mechanisms. Aside from this difference the programs tested are identical.
+The testing is complicated by syntax constructions not supporting importing. Program correctness is checked by comparing printed output, but printing functions tend to be defined externally, via some form of library, standard or otherwise. To cover this difference we supply an extra prelude for each of the implementations. These define the expected printing functions.
+
+As an example, the prelude for the syntax construction implementation of OCaml is as follows:
+
+\inputminted{ocaml}{implementation/languages/ocaml/fake-prelude}
+
+The original OCaml implementation instead uses this prelude:
+
+\inputminted{ocaml}{implementation/languages/ocaml/real-prelude}
+
+When a test program is run by either implement we prepend the corresponding prelude. The programs themselves (without the prelude) are identical.
 
 The test programs implement functions for calculating Fibonacci numbers with the quadratic recursive definition as well as the linear version, and two versions of FizzBuzz. The programs use all syntax constructions at least once between them with the exception of list related constructions in OCaml.
 
 \section{Performance} \label{sec:performance}
 
-The performance of a tool has a large impact on the practicality of using it regularly, thus a few words will here be spent on such issues. Because of the various issues apparent and described throughout the evaluation this section will not be particularly thorough however; if a tool is a poor choice for capability reasons its performance matters little.
+This section evaluates the performance of the syntax construction implementation used throughout this thesis.
 
 In practice all the sub-components of the implementation have been fast enough to not incur any noticeable delay for any of the programs tested, with one very notable exception: the expansion phase is slow. Figure~\ref{fig:performance-graph-with-expansion} shows the result of running the tool on programs of varying length. These programs are constructed by duplicating and concatenating the code in Listing~\ref{lst:lua-fragment} an increasing number of times.
 
 % TODO: maybe use something more latex-y?
-\begin{figure}[h]
+\begin{figure}[t]
 \includegraphics[width=\textwidth]{resources/performance-graph-with-expansion}
-\caption{Stage runtime}
+\caption{Phase runtime, the light green line is a best fit of the expansion phase}
 \label{fig:performance-graph-with-expansion}
 \end{figure}
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{lua}
 do
   function identity(x)
@@ -2038,29 +2632,29 @@ end
 \label{lst:lua-fragment}
 \end{listing}
 
-The slowness of expansion is not an inherent property of the method, but rather a consequence of the simplest possible implementation. Expansion of a syntax construction assumes that each symbol exists at most once in binding position (see Section~\ref{sec:expansion-checking} for more information), and name resolution uses gensyms and renaming to ensure this to be true. Any expansion may duplicate one of its sub nodes however, which might produce a tree that has the same symbol in binding position multiple times.
+We believe the slowness of expansion to not be an inherent property of the method, but rather a consequence of the simplest possible implementation. Expansion of a syntax construction assumes that each symbol exists at most once in binding position (see Section~\ref{sec:expansion-checking} for more information), and name resolution uses generated unique symbols and renaming to ensure this to be true. However, an expansion may duplicate one of its sub-nodes, which might produce a tree that has the same symbol in binding position multiple times.
 
-Thus we reach the conclusion that we may need to perform name resolution after an expansion, to replace the duplicated binding symbols with distinct symbols. If the bindings use \mintinline{syncon}{#bind x in} then the affected symbols are confined to sub nodes of the expanded syntax construction, but if they use \mintinline{syncon}{#bind x before} or \mintinline{syncon}{#bind x after} no such guarantee exists. The affected symbols may be arbitrarily far away in the abstract syntax tree, as long as they reside in the same scope, or one of its child scopes.
+Thus we reach the conclusion that we may need to perform name resolution after an expansion, to replace the duplicated binding symbols with distinct symbols.
 
-The naive implementation of expansion then expands a single syntax construction, then runs name resolution on the entire abstract syntax tree to ensure the invariant holds, then repeats until no more syntax constructions can be expanded.
+The naive implementation of expansion then expands a single syntax construction, then runs name resolution on the entire abstract syntax tree to ensure the invariant holds, then repeats, until no more syntax constructions can be expanded.
 
-Most syntax constructions do not duplicate its sub nodes however, they are generally used at most once, in which case the extra name resolution pass is unnecessary. In fact, none of the syntax constructions used to implement the OCaml and Lua subsets use a sub node more than once, thus the amount of unnecessary work performed is significant.
+However, most syntax constructions do not duplicate its sub-nodes. They are generally used at most once, in which case the extra name resolution pass is unnecessary. In fact, none of the syntax constructions used to implement the OCaml and Lua subsets use a sub-node more than once, thus the amount of unnecessary work performed is significant.
 
-\begin{figure}[h]
+\begin{figure}[t]
 \includegraphics[width=\textwidth]{resources/performance-graph-without-expansion}
 \caption{Stage runtime, excluding expansion}
 \label{fig:performance-graph-without-expansion}
 \end{figure}
 
-As for the remaining parts of the implementation Figure~\ref{fig:performance-graph-without-expansion} shows the runtime of each of the stages except expansion, for easier readability. Parsing requires an algorithm that can parse any context free grammar and produce all syntax trees in case of ambiguities. The current implementation uses an off-the-shelf implementation of the Earley parsing algorithm. (Todo: ref to library and time complexity analysis?). The algorithms used for grammar generation, expansion checking, expansion, and name resolution have not been examined to determine time complexity, but have in practice had negligible impact on the run time of the implementation.
+As for the remaining parts of the implementation Figure~\ref{fig:performance-graph-without-expansion} shows the runtime of each of the stages except expansion, for easier readability. Parsing requires an algorithm that can parse any context free grammar and produce all syntax trees in case of ambiguities. The current implementation uses an off-the-shelf implementation\footnote{https://hackage.haskell.org/package/Earley} of the Earley \cite{Earley1970An-Efficient-Co} parsing algorithm. The algorithms used for grammar generation, expansion checking, expansion of a single instance (as opposed to full expansion of all instances), and name resolution have not been examined to determine time complexity, but have in practice had negligible impact on the run time of the implementation.
 
 To summarize, the run time of the current implementation is dominated, by several orders of magnitude, by the expansion phase, which in the common case can be greatly optimized.
 
 \section{Error Reporting} \label{sec:error-reporting}
 
-Since one of the design goals is good error messages this section will spend some time examining the error messages produced by the implementation, and to some extent what the messages could be given some more engineering and user experience effort.
+Since one of the design goals is good error messages, this section examines the error messages produced by the implementation, and to some extent what the messages could be, given some more engineering and user experience effort.
 
-Note that the errors examined are only those related to syntax constructions, i.e. ambiguous source code, incorrect expansions, and name binding errors, nothing on type errors or runtime errors.
+Note that the errors examined are only those related to syntax constructions, i.e., ambiguous source code, incorrect expansions, and name binding errors. Examples of errors that are not covered are type errors and runtime errors, since this thesis makes no contribution to either kind of error.
 
 \subsection{Ambiguous Source Code} \label{sec:errors-ambiguous}
 
@@ -2068,7 +2662,7 @@ Syntax constructions provide no guarantee that a composed language has an unambi
 
 The error message should quickly direct the user to the actually ambiguous part of the code, and ideally also present what to change to select one of the possible interpretations.
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{syncon}
 syntax binaryAnd:Expression =
   a:Expression "&" b:Expression
@@ -2103,7 +2697,7 @@ It is worth noting that the current implementation shows the above information, 
 
 Ideally the system could detect that \mintinline{syncon}{parens} have no effect beyond grouping, and that it could be used to force one interpretation or the other, thus using it instead of the textual representation above, but that functionality is not present at the moment. As such the implementation will correctly identify the ambiguous section of the code, and provide a clear enough representation of the different ways to interpret the ambiguity, but no suggested changes are presented.
 
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{syncon}
 syntax sum:Expression =
   a:Expression "+" b:Expression
@@ -2144,7 +2738,7 @@ The latter interpretation is somewhat less obvious than the former, since we rar
 It is worth noting here that parentheses could be used for disambiguation, similar to above, but the syntax of OCaml dictates that the code in Listing~\ref{lst:ambiguous-let-expr} should be unambiguously parsed as the second alternative. The solution in this case is to give \mintinline{ocaml}{let} a low precedence.
 
 % TODO: write about [1; 2; 3]
-\begin{listing}[h]
+\begin{listing}[t]
 \begin{minted}{syncon}
 syntax sequentialComposition:Expression =
   a:Expression ";" b:Expression
@@ -2221,23 +2815,25 @@ As a non-trivial example, consider this implementation of an if statement (from 
 syntax if:Statement =
   "if" cond:Expression
   "then" then:Block
-  elseif:("elseif" econd:Expression "then" ethen:Block)*
+  elseif:("elseif" econd:Expression
+          "then" ethen:Block)*
   ("else" else:Block)? "end"
 {
   #scope (then)
   #scope elseif:(ethen)
   #scope (else)
 
-  BExpression` efun return. efun break. #if (#deref `t(cond))
-    (fun _. `t(then) return break)
-    (fun _. `t(
-      foldr elseif next
-        (BExpression` #if (#deref `t(econd))
-          (fun _. `t(ethen) return break)
-          (fun _. `t(next)))
-      foldr else _
-        (BExpression` `t(else) return break)
-      (BExpression` #unit)))
+  BExpression`
+    efun return. efun break. #if (#deref `t(cond))
+      (fun _. `t(then) return break)
+      (fun _. `t(
+        foldr elseif next
+          (BExpression` #if (#deref `t(econd))
+            (fun _. `t(ethen) return break)
+            (fun _. `t(next)))
+        foldr else _
+          (BExpression` `t(else) return break)
+        (BExpression` #unit)))
 }
 \end{minted}
 
@@ -2269,7 +2865,7 @@ Using this information we can summarize the errors to the following list:
 
 The errors arise because the expansion puts repetitions of \mintinline{syncon}{econd} inside functions, later repetitions nested further in, which restricts their exports, hiding them from most preceding elements as well as the surrounding syntax tree.
 
-The fix is two wrap the conditions in their own scope and restrict their exports before expansion; we most likely do not intend for variables bound in the condition to be visible outside of the if-statement.
+To solve this we wrap the conditions in their own scope and restrict their exports before expansion; we most likely do not intend for variables bound in the condition to be visible outside of the if-statement.
 
 The errors presented here are perhaps not particularly nice to read or understand, but they contain the information needed to construct better messages, it ''just'' requires some more engineering and user experience effort.
 
@@ -2295,9 +2891,9 @@ No binding errors can be encountered during expansion of syntax construction, no
 \section{Limitations and Future Work}
 
 \begin{description}
-  \item[Contextual Information] Certain programming language features require information specified by their context without a programmer using an explicit reference to that context, for example, a \mintinline{lua}{break} statement must abort the innermost surrounding loop without any reference to it. Other examples of this can be found in sections \ref{sec:imperative-eval} (\mintinline{lua}{break} and \mintinline{lua}{return}) and \ref{sec:functional-eval} (pattern matching). Syntax constructions have no concept of this, it is instead implemented using either regular functions in the core language, or expression functions, introduced in Section~\ref{sec:core-language}. However, as elaborated later in the same section (starting on page \pageref{sec:efun-drawbacks}), these are a very poor, unsound, solution that unnecessarily couple the implementation of different syntax constructions to each other.
+  \item[Contextual Information] Certain programming language features require information specified by their context without a programmer using an explicit reference to that context, for example, a \mintinline{lua}{break} statement must abort the innermost surrounding loop without any reference to it. Other examples of this can be found in sections \ref{sec:imperative-eval} (\mintinline{lua}{break} and \mintinline{lua}{return}) and \ref{sec:functional-eval} (pattern matching). Syntax constructions have no concept of this, it is instead implemented using either regular functions in the core language, or expression functions, introduced in Section~\ref{sec:core-language}. However, as elaborated later in the same section (starting on page \pageref{sec:efun-drawbacks}), these cannot be correctly described using syntax constructions, thus the expansion checker cannot guarantee an expansion's correctness. Additionally, they unnecessarily couple the implementation of different syntax constructions to each other.
 
-  A more sound solution for future work may be to create a form of lexical bindings, where a syntax construction may set the value of such a binding for all its descendants, and a syntax construction that uses such a binding may not be used where it is unset (e.g. \mintinline{lua}{break} may only be used inside a loop, which would set such a binding).
+  A better solution for future work may be to create a form of lexical bindings, where a syntax construction may set the value of such a binding for all its descendants, and a syntax construction that uses such a binding may not be used where it is unset (e.g. \mintinline{lua}{break} may only be used inside a loop, which would set such a binding).
 
   \item[Ambiguity Control] Syntax constructions allow for ambiguity in the syntax of a programming language where desired, but provides poor control over it. The language designer gets no help in ensuring its presence or absence but must instead test for it themselves. Additionally, when ambiguity is present but undesired the tools to remove it are frequently not very convenient, page~\pageref{sec:lua-func-call-precedence} for example contains an unintentional ambiguity with a slightly inconvenient solution, while page~\pageref{sec:ambiguous-lists} contains an unintentional ambiguity with a significantly inconvenient solution.
 
@@ -2318,17 +2914,21 @@ No binding errors can be encountered during expansion of syntax construction, no
 
 \section{Conclusion}
 
-This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages. From a subjective point of view the experience of using syntax constructions to define languages was pleasant when things were working, and the error messages were informative when they did not, but fixing the problems was frequently painful.
+This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages. From a subjective point of view, the experience of using syntax constructions to define languages was pleasant when things were working, and the error messages were informative when they did not, but fixing the problems was frequently painful.
 
 Ambiguity control in particular was insufficient, the controls available for the purpose had unintended side-effects (precedence in function calls in Lua, see p.~\pageref{sec:lua-func-call-precedence}) or could not solve the issue at all, requiring large amounts of duplication (lists in OCaml, see p.~\pageref{sec:ambiguous-lists}).
 
-Specifying binding semantics worked well however, with the exception of requiring us to deal with a case we would rather forbid (function argument patterns in OCaml, see p.~\pageref{sec:ocaml-function-argument-patterns}).
+However, specifying binding semantics worked well, with the exception of requiring us to deal with a case we would rather forbid (function argument patterns in OCaml, see p.~\pageref{sec:ocaml-function-argument-patterns}).
 
-Syntax constructions do not live up to the goals initially presented, but they do provide a reasonable first step.
+Syntax constructions do not fully meet the goals initially presented, but they do provide a reasonable first step.
 
 \printbibliography[heading=bibintoc]
 
 \appendix
+
+\chapter{Language Definition: Formalization Core} \label{sec:formal-core}
+
+\inputminted{syncon}{implementation/languages/formalization-example/core}
 
 \chapter{Language Definition: OCaml Subset} \label{sec:appendix-ocaml}
 

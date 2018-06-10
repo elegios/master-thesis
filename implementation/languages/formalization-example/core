@@ -1,0 +1,20 @@
+syntax type File = builtin
+syntax type Core = builtin
+syntax coretop:File = e:Core
+{ builtin }
+syntax coreafter:Core =
+  "(" "bind_after" id:Identifier v:Core ")"
+{
+  #bind id after
+  builtin
+}
+syntax coresum:Core =
+  "(" "sum" a:Core b:Core ")"
+{ builtin }
+syntax coreseq:Core =
+  "(" "seq" a:Core b:Core ")"
+{ builtin }
+syntax corevar:Core = id:Identifier
+{ builtin }
+syntax corelit:Core = i:Integer
+{ builtin }

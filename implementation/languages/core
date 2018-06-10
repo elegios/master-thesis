@@ -2,14 +2,18 @@ syntax top:File = e:BExpression {
   builtin
 }
 
-syntax defAfter:BExpression = "defAfter" x:Identifier "=" e:BExpression {
+syntax defAfter:BExpression =
+  "defAfter" x:Identifier "=" e:BExpression
+{
   #bind x after
   #scope (e)
   #prec 3
   builtin
 }
 
-syntax defAround:BExpression = "defAround" x:Identifier "=" e:BExpression {
+syntax defAround:BExpression =
+  "defAround" x:Identifier "=" e:BExpression
+{
   #bind x before
   #bind x after
   #scope (e)
@@ -17,19 +21,25 @@ syntax defAround:BExpression = "defAround" x:Identifier "=" e:BExpression {
   builtin
 }
 
-syntax seqComp:BExpression = e1:BExpression ";" e2:BExpression {
+syntax seqComp:BExpression =
+  e1:BExpression ";" e2:BExpression
+{
   #assoc left
   #prec 1
   builtin
 }
 
-syntax appli:BExpression = f:BExpression a:BExpression {
+syntax appli:BExpression =
+  f:BExpression a:BExpression
+{
   #assoc left
   #prec 4
   builtin
 }
 
-syntax fun:BExpression = "fun" x:Identifier "." e:BExpression {
+syntax fun:BExpression =
+  "fun" x:Identifier "." e:BExpression
+{
   #bind x in e
   #scope (e)
   #prec 3

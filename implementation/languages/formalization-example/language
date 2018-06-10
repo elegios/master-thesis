@@ -1,0 +1,29 @@
+syntax type Expression = Core
+syntax top:File = e:Expression
+{ File` `t(e) }
+syntax var:Expression = id:Identifier
+{ Core` `id(id) }
+syntax lit:Expression = i:Integer
+{ Core` `int(i) }
+syntax sum:Expression =
+  a:Expression "+" b:Expression
+{
+  #prec 2
+  #assoc left
+  Core` (sum `t(a) `t(b))
+}
+syntax def:Expression =
+  "def" id:Identifier "=" e:Expression
+{
+  #bind id after
+  #prec 1
+  Core` (bind_after `id(id) `t(e))
+}
+syntax block:Expression =
+  "{" (es:Expression ";")* "}"
+{
+  #scope (es)
+  foldl es prev
+    (Core` (seq `t(prev) `t(es)))
+    (Core` 0)
+}
