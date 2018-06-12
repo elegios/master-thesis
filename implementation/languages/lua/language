@@ -154,10 +154,6 @@ syntax if:Statement =
   #scope elseif:(econd (ethen))
   #scope (else)
 
-  //#scope (then)
-  //#scope elseif:(ethen)
-  //#scope (else)
-
   BExpression`
     efun return. efun break. #if (#deref `t(cond))
       (fun _. `t(then) return break)

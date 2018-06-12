@@ -8,6 +8,7 @@
 \usepackage{semantic}
 \usepackage{graphicx}
 \usepackage{parskip}
+\usepackage{afterpage}
 
 \usepackage{algpseudocode}
 
@@ -255,7 +256,7 @@ The goal above states very little in regards to the form of a solution, nor does
   \item[Syntactical freedom:] Language features should be able to specify new syntax, ideally with no constraints.
   \item[Abstraction preservation:] No usage of a language feature should expose its implementation to an end user.
   \item[Good error messages:] Improper use or implementation of language features should present the user with understandable error messages.
-  \item[Composition through cherrypicking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
+  \item[Composition through cherry-picking:] It should be possible to reuse individual features of languages, i.e., the unit of composition must be smaller than a full language.
   \item[Reasoning without context:] Expanding upon the previous point, a language feature should be as self contained as possible, to permit reasoning about it without full awareness of its context.
 \end{description}
 
@@ -803,34 +804,105 @@ The solution used in this thesis requires tagging to distinguish a spliced ident
 
 This chapter takes the informal description of Chapter~\ref{sec:syntax-constructions} and develops a set of more formal definitions and algorithms. Figure~\ref{fig:formalization-flowchart} shows an overview of the different parts and how they relate to each other in terms of inputs and outputs.
 
-The entire chapter also features a running example in the form of a language (Listing~\ref{lst:formal-language}) and some source code in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. The language implements simple arithmetic, a scoping construct, and a name binding construct. The core language used is a small, Lisp-like language, providing arithmetic, sequential composition, and a binding construct. This language can be found in Appendix~\ref{sec:formal-core}.
-
 % TODO: maybe use something more latex-y?
-\begin{figure}[b]
+\begin{figure}[t]
 \includegraphics[width=\textwidth]{resources/formalization-flowchart}
 \caption{The different algorithms that formalize syntax constructions, and how they relate to each other.}
 \label{fig:formalization-flowchart}
 \end{figure}
 
+For the purposes of this section the system as a whole takes two inputs:
+
+\begin{description}
+  \item[A list of tokens] The source code we wish to parse and process, represented as a list of tokens.
+  \item[A set of syntax constructions] All the syntax constructions that may be used throughout the system. A subset of these specify the programming language in which the source code is written, the rest are part of the core language, or any intermediary language.
+\end{description}
+
+The final output is a fully expanded \emph{instance} of some syntax construction. For all intents and purposes, an instance is an abstract syntax tree (AST) of the source code we are processing, and the two terms will mostly be used interchangeably. ''Fully expanded'' means that it only contains constructs from the core language, all higher-level language constructs have been expanded and replaced with lower-level constructs.
+
+Section~\ref{sec:defining-syntax-constructions} defines the various components that make up a single syntax construction, which all other sections will then use.
+
+Expansion checking can be run entirely separately from the rest of the system, but requires previous knowledge from the other parts, and will thus be explained last.
+
+Grammar generation (Section~\ref{sec:formalization-grammar-generation}) takes a set of syntax constructions, more precisely the set that defines our language, and produces a context free grammar (CFG).
+
+Parsing (Section~\ref{sec:formalization-parsing}) takes the CFG from grammar generation and the list of tokens describing the source code and produces zero or more instances (ASTs). Zero instances means parsing failed, one means it succeeded, more than one means the source code was ambiguous.
+
+Ambiguity reporting (Section~\ref{sec:implementation-ambiguity-detection}) takes a set of instances and produces an error message of the form ''these parts of the source code are ambiguous'', thus being more informative than the trivial ''the source code is ambiguous''.
+
+Name resolution (Section~\ref{sec:name-resolution}) takes the complete set of syntax constructions and an instance, and checks the instance for binding errors. The binding semantics for an instance is specified in the syntax construction of which it is an instance. Name resolution also performs (binding preserving) renaming to ensure that each symbol occurs at most once in a binding position (as opposed to a referencing position).
+
+Expansion (Section~\ref{sec:expansion-formalization}) takes an instance where each symbol appears in binding position at most once and expands a single instance somewhere in the AST. Note that the resulting instance might have a symbol in a binding position more than once, and there may be more instances that could be expanded. The general case will thus interleave expansion and name resolution until no more instances can be expanded, at which point the final, fully expanded instance has been produced.
+
+Expansion checking (Section~\ref{sec:expansion-checking-formalization}) examines a single syntax construction to ensure that it cannot introduce a binding error through expansion. This means that if an AST has no binding errors, then the expansion of some instance cannot introduce a new binding error, i.e., all errors can be reported in terms of the original source code.
+
+As mentioned previously, expansion checking can be run entirely independently of the rest of the system, none of the other steps require it. In particular, expansion checking requires no source code and no other syntax constructions than the one currently being checked. However, all statements regarding the abstraction preserving nature of syntax constructions requires that each syntax construction has been checked and found correct. In practice, expansion checking should thus be performed before all other steps.
+
+% The entire chapter also features a running example in the form of a language (Listing~\ref{lst:formal-language}) and some source code in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. The language implements simple arithmetic, a scoping construct, and a name binding construct. The core language used is a small, Lisp-like language, providing arithmetic, sequential composition, and a binding construct. This language can be found in Appendix~\ref{sec:formal-core}.
+
+\section{Running Example}
+
+The remainder of this chapter will feature a running example: a programming language (defined in Listing~\ref{lst:formal-language}) and some source code in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. This section will explain the example in greater detail.
+
+\afterpage{
 \clearpage
 \newgeometry{headsep=10mm,footskip=0mm,bottom=0mm}
 \begin{listing}[t!]
-\inputminted{syncon}{implementation/languages/formalization-example/language}
+\inputminted[linenos]{syncon}{implementation/languages/formalization-example/language}
 \caption{The language that will be used as a running example.\label{lst:formal-language}}
 \end{listing}
 
 \begin{listing}[H]
 \inputminted[linenos]{text}{implementation/languages/formalization-example/file}
-\caption{Source code for the running example. Should evaluate to $8$.\label{lst:formal-file}}
+\caption{Source code for the running example. Should evaluate to $10$.\label{lst:formal-file}}
 \end{listing}
-\clearpage
 \restoregeometry
+\clearpage
+}
 
-\section{Defining Syntax Constructions}
+The language consists of six syntax constructions: \syncon{top}, \syncon{var}, \syncon{lit}, \syncon{sum}, \syncon{def}, and \syncon{block}, and one syntax type: \syncon{Expression}. The language is implemented in terms of a lisp-like core language (which can be found in Appendix~\ref{sec:formal-core}, also defined using syntax constructions).
 
-Many of the concepts that make up a syntax construction must refer to its children, and will do so through the use of a \emph{path}. A path is a sequence of steps directing traversal through a tree. Each step is either a number $n$, traversing down the $n$th child of the current node, or a $*$ traversing down all children of the current node. This notion of traversal will be explained further when we later define the form of a syntax description and an instance. Additionally, each path belongs to a single syntax construction and must not be used with any other. We use $[]$ for the empty path and $n:path$ for prepending a step $n$ to path $path$. Finally, we use $[a, b, c]$ as shorthand for $a : b : c : []$.
+Line 1 of Listing~\ref{lst:formal-language} defines the syntax type \syncon{Expression}, and states that its representation is the same as that of the syntax type \syncon{Core}, which is provided by the core language.
 
-Some parts of this formalization will use a line above an expression to mean a sequence of expressions. For example, $\overline{i}$ denotes a sequence of $i$s, $i_n$ denotes the $n$th element in the sequence, and $\overline{i_n + 1}$ denotes a sequence of $i_n + 1$ for each $n$ (i.e. a mapping over the sequence). For example, given the sequence $\overline{i} = [1, 2, 3]$, we have $\overline{i_n + 1} = [2, 3, 4]$. Additionally, given two sequences $\overline{a} = [1, 2]$ and $\overline{b} = [3, 4]$, $\overline{(\overline{a}, b_n)} = [([1, 2], 3), ([1, 2], 4)]$, i.e., $\overline{a}$ stays a sequence since it has no index and retains the line.
+The remainder of Listing~\ref{lst:formal-language} defines the six syntax constructions. As an example, consider \syncon{sum}, defined on lines 8-14. Broadly speaking, a syntax construction is defined in three parts: a header (line 8), a syntax description (line 9), and a body (lines 10-14):
+
+\begin{description}
+  \item[Header] The header declares the name of the syntax construction (\syncon{sum}) and its syntax type (\syncon{Expression}).
+  \item[Syntax description] The syntax description describes the concrete syntax of the syntax construction, i.e., how it should be parsed when we parse source code in our language.
+  \item[Body] The body is split in two parts:
+  \begin{itemize}
+    \item Some optional extra information, e.g., precedence (line 11), binding information (in \syncon{def}, on line 18), or scoping information (in \syncon{block}, on line 25).
+    \item An expansion template (line 13), specifying how this syntax construction is to be expanded.
+  \end{itemize}
+\end{description}
+
+The beginning of line 13, \syncon{Core`}, specifies that what follows should be parsed as a syntax construction of syntax type \syncon{Core}. Had it instead said \syncon{Expression`} then the remainder of the body would have been parsed as a syntax construction of syntax type \syncon{Expression}. Both would be valid when considering the syntax type of the expansion, as it only needs to be representationally equal to \syncon{Expression}. In general, parsing uses nominal syntax types while expansion uses representational syntax types.
+
+The remainder of line 13 is an expression in the core language, a call to the function \syncon{add} with two arguments: \syncon{`t(a)} and \syncon{`t(b)}. These arguments represent the \syncon{Expression}s \syncon{a} and \syncon{b} from the syntax description. The ''\syncon{t}'' in \syncon{`t(a)} means that we are using a syntax construction \syncon{a}, while \syncon{`int(i)} (e.g. in \syncon{lit} on line 7) instead means that we are using an integer from the syntax description. This extra syntax for using elements from the syntax description in the expansion template is due to a limitation in the parser, and is discussed in more detail in the previous chapter, in Section~\ref{sec:disambiguation-implementation}.
+
+The definition of \syncon{block}, on lines 22-29, demonstrate additional capabilities: repetitions via ''\syncon{*}'', ''\syncon{+}'', and ''\syncon{?}'', as commonly seen in regular expressions and EBNF. The ''\syncon{*}'' after the parentheses on line 23 denote that a \syncon{block} can contain zero or more \syncon{Expression}s followed by a semicolon.
+
+The expansion template, on lines 25-28, must then reduce the unknown number of \syncon{Expression}s to a exactly one. This is done through a left fold, folding over \syncon{es} and naming the accumulator \syncon{prev}.
+
+Line 27 contains an expansion template, and is essentially the function we are folding with. Here \syncon{prev} will refer to the accumulator, and \syncon{es} will refer to the \emph{current} element of the list we are folding over. \syncon{seq} is sequential composition, defined in the core language, i.e., it evaluates its first argument and then returns the second.
+
+Line 28 contains the initial value of the accumulator: an expression that will evaluate to \syncon{0}.
+
+Three of the syntax constructions in Listing~\ref{lst:formal-language} interact with name binding: \syncon{var}, \syncon{def}, and \syncon{block}.
+
+\syncon{var} introduces a reference to some binding, signified by the \syncon{Identifier} in the syntax description that does not appear in a \syncon{#bind} declaration. This identifier is in a referencing position.
+
+\syncon{def} introduces a binding \emph{after} itself, as signified by the \syncon{#bind id after} declaration on line 18. This identifier is in a binding position. In particular, the binding is not available in \syncon{e}, this syntax construction does not allow recursive definitions. Had there been an additional declaration of the form \syncon{#bind id in e}, then recursive definitions would have been allowed.
+
+\syncon{block} introduces a scope, preventing bindings inside the \syncon{block} from being available outside. This is declared through \syncon{#scope (es)} on line 23. Had the declaration instead been \syncon{#scope es:(es)}, then each expression would have been given its own scope, additionally preventing bindings from one expression from being used in any of the others.
+
+And finally, \syncon{File} is a syntax type introduced by the core language to represent an entire file. When parsing source code the parser will try to parse a syntax construction with this syntax type to cover the entire file. In grammar terms, \syncon{File} is the start symbol.
+
+\section{Defining Syntax Constructions} \label{sec:defining-syntax-constructions}
+
+This section will introduce the various components that make up a single syntax construction, finally stating the complete definition of a syntax construction at the end of the section.
+
+Some parts of this formalization will use a line above an expression to mean a sequence of expressions. For example, $\overline{i}$ denotes a sequence of $i$s, $i_n$ denotes the $n$th element in the sequence, and $\overline{i_n + 1}$ denotes a sequence of $i_n + 1$ for each $n$ (i.e. a mapping over the sequence). For example, given the sequence $\overline{i} = [1, 2, 3]$, we have $\overline{i_n + 1} = [2, 3, 4]$. Additionally, given two sequences $\overline{a} = [1, 2]$ and $\overline{b} = [3, 4]$, $\overline{(\overline{a}, b_n)} = [([1, 2], 3), ([1, 2], 4)]$, i.e., $\overline{a}$ stays a sequence since it has no index and retains the line. An empty sequence will be written $\epsilon$.
 
 \subsubsection{Syntax Type}
 
@@ -838,186 +910,236 @@ The syntax type $t_c$ of a syntax construction $c$ is given by the following gra
 
 \setlength{\grammarindent}{8em}
 \begin{grammar}
-<SyntaxType> ::= $\mathit{name}$
-  \alt '(' $\mathit{name}$ ',' <SyntaxType> ')'
+<syntax-type> ::= $\mathit{name}$
+  \alt $\mathit{name}$ <syntax-type>
 \end{grammar}
 
 where $\mathit{name}$ is a string, presumably given by a user. The first case is a syntax type that is marked as \syncon{builtin}. The second case is any other syntax type, where the first component is the name of the syntax type, and the latter is the underlying syntax type, i.e., what a syntax construction would expand to.
 
-For our example language all syntax constructions have the syntax type $(\syncon{Expression}, \syncon{Core})$, except \syncon{top}, which has syntax type \syncon{File}.
+For our example language all syntax constructions have the syntax type $(\syncon{Expression}\ \syncon{Core})$, except \syncon{top}, which has syntax type \syncon{File}.
 
 \subsubsection{Syntax Description}
 
-The syntax description $\mathit{syntax}$ of a syntax construction $c$ is given by the following grammar:
+The syntax description of a syntax construction $c$ is given by the following grammar:
+
+\newcommand{\ident}{\mathrel{\mathbf{identifier}}}
+\newcommand{\integer}{\mathrel{\mathbf{integer}}}
+\newcommand{\float}{\mathrel{\mathbf{float}}}
+\newcommand{\seq}{\mathrel{\mathbf{seq}}}
+\newcommand{\repstar}{\mathrel{\mathbf{star}}}
+\newcommand{\repplus}{\mathrel{\mathbf{plus}}}
+\newcommand{\repquestion}{\mathrel{\mathbf{question}}}
 
 \setlength{\grammarindent}{6em}
 \begin{grammar}
-<Syntax> ::= 'Identifier'
-  \alt 'Symbol'
-  \alt 'String'
-  \alt 'Integer'
-  \alt 'Float'
-  \alt <Token-Literal>
-  \alt <SyntaxType>
-  \alt '(' <Syntax>* ')'
-  \alt <Syntax> '*'
-  \alt <Syntax> '+'
-  \alt <Syntax> '?'
+<syntax> ::= $\ident$
+  \alt $\mathbf{string}$
+  \alt $\integer$
+  \alt $\float$
+  \alt <token-literal>
+  \alt <syntax-type>
+  \alt $\seq$ $\overline{\synt{syntax}}$
+  \alt $\repstar$ <syntax>
+  \alt $\repplus$ <syntax>
+  \alt $\repquestion$ <syntax>
 \end{grammar}
 
-The last three alternatives represent the EBNF operators used throughout Chapter~\ref{sec:syntax-constructions}.
+The first four alternatives match any token of the correct type, e.g., $\integer$ will match any integer token. \synt{token-literal} represents any literal used in the syntax description, for example \syncon{"+"} on line 9 in Listing~\ref{lst:formal-language}. These will match a token containing precisely that text, a single plus symbol in the example. $\seq$ represents a parenthesized sequence (e.g. on line 23 in Listing~\ref{lst:formal-language}), while $\repstar$, $\repplus$, and $\repquestion$ represent ''\syncon{*}'', ''\syncon{+}'', and ''\syncon{?}'', respectively.
 
-For example, the $syntax$ of \mintinline{syncon}{block} is given by:
-
-$$
-\text{(} \enspace \text{symbol}'\{' \enspace (\syncon{Expression} \enspace \text{symbol}';')\text{*} \enspace \text{symbol}'\}' \enspace \text{)}
-$$
-
-Since the syntax used in Section~\ref{sec:design-syntax} allows multiple direct children (i.e. without going through ''($\ldots$)''), but the syntax above does not, we implicitly insert parentheses around the description to get an equivalent description.
-
-From here we define the concept of a leaf of a syntax construction, those descendants that appear atomic: the first seven alternatives in the grammar above are leaves.
-
-We are now ready to define path traversal through a syntax description. We will write it as function application, i.e., $path(syntax)$ (though the definition below uses an extra pair of parentheses to clarify the grouping):
+For example, the \synt{syntax} of \mintinline{syncon}{block} is given by:
 
 $$
-\begin{array}{rcl}
-([])(syntax) & = & i \\
-(n : path)((\overline{syntax})) & = & path(syntax_n) \\
-(\_ : path)(syntax~*) & = & path(syntax) \\
-(\_ : path)(syntax~+) & = & path(syntax) \\
-(\_ : path)(syntax~?) & = & path(syntax) \\
-\end{array}
+\seq \syncon|"{"|\ (\repstar (\seq (\syncon{Expression}\ \syncon{Core})\ \syncon{";"}))\ \syncon|"}"|
 $$
 
-As an example, $[2, *, 1](syntax \text{ of } \syncon{block}) = \syncon{Expression}$. We also place a restriction on paths: a path must select a single \synt{Syntax} in the syntax description of the syntax construction to which it belongs.
+Since the syntax used in Section~\ref{sec:design-syntax} allows multiple direct children (i.e. without using an extra set of parentheses), but the syntax above does not, we implicitly insert $\seq$ around the description to get an equivalent description.
 
-\subsubsection{Syntax Construction Instance}
+Another notable difference between the syntax descriptions in Listing~\ref{lst:formal-language} and \synt{syntax} is that of names, the names in the syntax description do not transfer. These will instead be reintroduced in a different form later.
 
-When a syntax construction $c$ is parsed we create an \emph{instance} of it, which is defined by the following grammar:
+From here we define the concept of a leaf of a syntax construction, those descendants that appear atomic: the first six alternatives in the grammar above are leaves.
+
+\subsubsection{Syntax Construction Instance} \label{sec:defining-instances}
+
+We will now define an instance of syntax construction. These are technically not part of the definition of a syntax description, but later concepts require knowledge of the structure of an instance.
+
+When the parser determines that some source code should be parsed as a syntax construction $c$ we create an instance of it, which is defined by the following grammar:
+
+\newcommand{\repseq}{\mathrel{\mathbf{rep}}}
 
 \setlength{\grammarindent}{6.5em}
 \begin{grammar}
-<Instance> ::= c '\{' <Inner> '\}'
+<instance> ::= $c :>$ <inner>
 
-<Inner> ::= <Token>
-  \alt <Instance>
-  \alt '(' <Inner>* ')'
-  \alt '[' <Inner>* ']'
+<inner> ::= <token>
+  \alt <instance>
+  \alt $\seq$ $\overline{\synt{inner}}$
+  \alt $\repseq$ $\overline{\synt{inner}}$
 \end{grammar}
+
+The alternatives of \synt{inner} each represent, in order:
+\begin{itemize}
+  \item A single token, parsed from one of the first five alternatives in \synt{syntax}.
+  \item An instance, parsed from a \synt{syntax-type}.
+  \item A sequence, parsed from a $\seq$.
+  \item A repetition, parsed from any of the three last alternatives in \synt{syntax} (i.e. the EBNF operators).
+\end{itemize}
 
 For example, the \mintinline{syncon}{block} on lines 2 through 5 of Listing~\ref{lst:formal-file} has the following instance:
 
 $$
 \begin{array}{l}
-\syncon{block}\{ \enspace \text{(} \\
-\quad \text{token}'\{' \\
-\quad \text{[} \enspace \text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
-\quad \hphantom{\text{[}} \enspace \text{(} \enspace \syncon{lit}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \enspace \text{]} \\
-\quad \text{token}'\}' \enspace \text{)} \enspace \} \\
+\syncon{block} :> \\
+\quad \seq \syncon|"{"|\\
+\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} :> \ldots)\ \syncon{";"}) \\
+\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{lit} :> \ldots)\ \syncon{";"})) \\
+\quad \hphantom{\seq }\ \syncon|"}"| \\
 \end{array}
 $$
 
-where $\syncon{def}\{\ldots\}$ is the instance of the \mintinline{syncon}{def} on line~3, and $\syncon{lit}\{\ldots\}$ is the instance of the \syncon{lit} on line~4.
+where $\syncon{def} :> \ldots$ is the instance of the \mintinline{syncon}{def} on line~3, and $\syncon{lit} :> \ldots$ is the instance of the \syncon{lit} on line~4.
 
-The structure of an instance has a very direct mapping from the syntax description of the construction itself; the first six alternatives of \synt{Syntax} map to a \synt{Token}, \synt{SyntaxType} maps to an \synt{Instance}, a parenthesized sequence maps to a parenthesized sequence, and an EBNF operator maps to a bracketed sequence. It is worth noting here that for our purposes an instance and an abstract syntax tree are the same thing.
-
-As a parallel to the leaves of a syntax construction, we define the leaves of an instance to be the \synt{Token}s and \synt{Instance}s that are reachable without passing through some other \synt{Instance}. The leaves of the \syncon{block} instance above are the curly braces, the semi-colons, the $\syncon{def}\{\ldots\}$, and the $\syncon{lit}\{\ldots\}$.
+As a parallel to the leaves of a syntax construction, we define the leaves of an instance to be the \synt{token}s and \synt{instance}s that are reachable without passing through some other \synt{instance}. The leaves of the \syncon{block} instance above are the curly braces, the semi-colons, the $\syncon{def} :> \ldots$, and the $\syncon{lit} :> \ldots$.
 
 \newcommand{\leaves}{\ensuremath{\mathit{leaves}}}
 
-More concretely, we compute the leaves of an instance using \leaves:
+More concretely, we compute the set of leaves of an instance using \leaves:
 
 \newcommand{\children}{\ensuremath{\mathit{children}}}
 $$
 \begin{array}{rcl}
-\leaves(c\{i\}) & = & children(i) \\
-\children(token) & = & \{token\} \\
-\children(c\{i\}) & = & \{c~i\} \\
-\children((\overline{i})) & = & \bigcup\limits_n \children(i_n) \\
-\children([\overline{i}]) & = & \bigcup\limits_n \children(i_n) \\
+\leaves(c :> i) & = & \children(i) \\
+\children(\synt{token}) & = & \{\synt{token}\} \\
+\children(c :> i) & = & \{c :> i\} \\
+\children(\seq \overline{i}) & = & \bigcup_n \children(i_n) \\
+\children(\repseq \overline{i}) & = & \bigcup_n \children(i_n) \\
 \end{array}
 $$
 \let\children\undefined
 
-Path traversal in an instance will, just as path traversal in a syntax description, be written as function application, i.e., $path(i)$:
+\subsubsection{Paths}
+
+We will now reintroduce the names used in the syntax descriptions of Listing~\ref{lst:formal-language}. Each name will be replaced by a path, a series of steps traversing \synt{syntax} or \synt{inner}, selecting the element(s) to which the name referred. A path is given by the following grammar:
+
+\setlength{\grammarindent}{5.5em}
+\begin{grammar}
+<path> ::= $n$ : <path>
+\alt $*$ : <path>
+\alt $[]$
+\end{grammar}
+
+Where $n$ is a positive number. We will additionally write $[a, b, c]$ as shorthand for $a : b : c : []$. Informally, a step $n$ traverses through the $n$th child, while a step $*$ traverses through \emph{all} children. We will generally use $p$ to range over paths, and $P$ to range over sets of paths.
+
+Each path belongs to some syntax construction $c$, and should only be used for traversal in the syntax description of $c$, or an instance of $c$.
+
+\newcommand{\follow}{\mathit{follow}}
+
+For traversal, we define a function $\follow$. To traverse \synt{syntax}:
 
 $$
 \begin{array}{rcl}
-([])(i) & = & \{i\} \\
-(n : path)((\overline{syntax})) & = & path(syntax_n) \\
-(n : path)([\overline{syntax}]) & = & path(syntax_n) \\
-(* : path)([\overline{syntax}]) & = & \bigcup_n path(syntax_n) \\
+\follow([], i) &=& i \\
+\follow(n : p, \seq \overline{i}) &=& \follow(p, i_n) \\
+\follow(\_ : p, \repstar i) &=& \follow(p, i) \\
+\follow(\_ : p, \repplus i) &=& \follow(p, i) \\
+\follow(\_ : p, \repquestion i) &=& \follow(p, i) \\
 \end{array}
 $$
 
-Path traversal in an instance may give several results, or none at all, thus we produce a set instead of a single element.
-
-For example, traversing the $\syncon{block}\{\ldots\}$ instance above using the path $[2, *, 1]$ gives the following result:
+Note that we only allow a $*$ step through one of the EBNF operators. To traverse \synt{inner}:
 
 $$
-[2, *, 1](\syncon{block}\{\ldots\}) = \{\syncon{def}\{\ldots\}, \syncon{lit}\{\ldots\}\}
+\begin{array}{rcl}
+\follow([], i) &=& \{i\} \\
+\follow(n : p, \seq \overline{i}) &=& \follow(p, i_n) \\
+\follow(n : p, \repseq \overline{i}) &=& \follow(p, i_n) \\
+\follow(* : p, \repseq \overline{i}) &=& \bigcup_n \follow(p, i_n) \\
+\end{array}
 $$
+
+As a consequence on the limitation on $*$ a traversal in \synt{syntax} produces a single element, while traversal in \synt{inner} produces a (possibly empty) set of elements.
+
+Below are a few examples of names from Listing~\ref{lst:formal-language} translated to paths, and what traversal yields:
+
+\begin{itemize}
+  \item Line 16, \syncon{def}: The name \syncon{id} becomes the path $[2]$.
+
+  $\follow([2], s)$, where $s$ is the syntax description of \syncon{def}, yields $\ident$.
+
+  $\follow([2], i)$, where $\syncon{def} :> i$ is the \syncon{def} instance on line~2 of Listing~\ref{lst:formal-file}, yields $\{\syncon{"a"}\}$.
+
+  \item Line 23, \syncon{block}: The name \syncon{es} becomes the path $[2, *, 1]$.
+
+  $\follow([2, *, 1], s)$, where $s$ is the syntax description of \syncon{block}, yields $(\syncon{Expression}\ \syncon{Core})$.
+
+  $\follow([2, *, 1], i)$, where $i$ is the \syncon{block} instance on lines~2-5, yields $\{(\syncon{def} :> \ldots), (\syncon{lit} :> \ldots)\}$.
+\end{itemize}
 
 \subsubsection{Scope}
 
-\newcommand{\near}{\ensuremath{\mathit{near}}}
+\newcommand{\near}{\ensuremath{\mathrel{\mathbf{near}}}}
+\newcommand{\scope}{\ensuremath{\mathrel{\mathbf{scope}}}}
 
 A scope is given by the following grammar:
 
 \begin{grammar}
-<Scope> ::= '(' $path$ ',' $paths$ ',' <Scope> ')'
-  \alt \near
+<scope> ::= $\scope$ $p$ $P$ <scope>
+  \alt $\near$
 \end{grammar}
 % TODO: ensure that the initial description of scopes covers repeating scopes and parent scopes properly
 
-The first case represents a scope introduced via \syncon{#scope}. It has three components: a path describing how often it repeats (i.e. \syncon{#scope repeat:(...)}), a set of paths to covered leaves (i.e. \syncon{#scope (leaf1 leaf2)}), and a parent scope.
+where $p$ is a path and $P$ is a set of paths. The first alternative represents a scope introduced via a declaration \syncon{#scope} in Listing~\ref{lst:formal-language}. $p$ describes how often the scope repeats (i.e. \syncon{#scope repeat:(...)}), while $P$ contains paths to the leaves included in the scope (i.e. \syncon{#scope (leaf1 leaf2)}). The final component is the parent scope.
 
-The second case represents the scope of the syntax construction itself, which won't be known until it is actually instantiated. \near\ is the ancestor scope of all other scopes. Note that each scope belongs to a single syntax construction. In particular, there is a separate \near\ scope for each, and they will not be discussed without a connection to some syntax construction.
+The second alternative is the special scope $\near$, which is the ancestor scope of all other scopes. It represents the scope to which the syntax construction instance belongs, i.e., the nearest surrounding scope.
+
+Note that, similar to paths, each scope belongs to a single syntax construction. They will not be discussed without a clear connection to a syntax construction or instance.
 
 \newcommand{\cover}{\ensuremath{\mathit{cover}}}
 We also introduce the concept of \cover: the cover of a scope is a set of paths to the leaves it contains:
 
 $$
 \begin{array}{rcl}
-\cover(\text{(}\_, \mathit{paths}, \_\text{)}) & = & \mathit{paths} \\
+\cover(\scope \_\ P \_) & = & P \\
 \cover(\near) & = & \{\text{The leaves not covered by another scope}\} \\
 \end{array}
 $$
 
-For example, \syncon{block} has two scopes: \near\ and $([], \{[2, *, 1]\}, \near)$. Their covers are $\{[1], [2, *, 2], [3]\}$ and $\{[2, *, 1]\}$, respectively. The latter scope corresponds to the \syncon{#scope (es)} declaration, thus the cover is a single path to \syncon{es}. \near\ then covers everything else, in this case the curly braces and the semicolon.
+We require that all leaves are covered by some scope, defaulting to $\near$ if no other scope applies. Additionally, no two scopes may cover the same leaf. To create nesting scopes we instead create parent-child connections between them.
+
+For example, \syncon{block} in Listing~\ref{lst:formal-language} has two scopes: \near\ and $(\scope []\ \{[2, *, 1]\} \near)$. Their covers are $\{[1], [2, *, 2], [3]\}$ and $\{[2, *, 1]\}$, respectively. The latter scope corresponds to the \syncon{#scope (es)} declaration on line~25, thus the cover is a single path to \syncon{es}. \near\ then covers everything else, in this case the curly braces and the semicolon.
 
 \subsubsection{Expansion Template}
 
 An expansion template $e_c$ is given by the following grammar:
 
-\setlength{\grammarindent}{8em}
+\newcommand{\acc}{\mathrel{\mathbf{acc}}}
+\newcommand{\foldl}{\mathrel{\mathbf{foldl}}}
+
+\setlength{\grammarindent}{12em}
 \begin{grammar}
-<Expansion> ::= $path$
-  \alt 'acc' $n$
-  \alt 'foldl' $path$ <Expansion> <Expansion>
-  \alt <Template>
+<expansion> ::= $p$
+  \alt $\acc n$
+  \alt $\foldl p$ <expansion> <expansion>
+  \alt $c :> \synt{expansion-inner}$
 
-<Template> ::= c '\{' <Inner> '\}'
-
-<Inner> ::= <Token>
-  \alt <Expansion>
-  \alt '(' <Inner>* ')'
-  \alt '[' <Inner>* ']'
+<expansion-inner> ::= <token>
+  \alt <expansion>
+  \alt $\seq \overline{\synt{expansion-inner}}$
+  \alt $\repseq \overline{\synt{expansion-inner}}$
 \end{grammar}
 
-It is essentially an instance, except with the capability of splicing in an element from another instance, or folding over many of them, to create a new instance of some other construction. The 'acc' $n$ alternative refers to the accumulator of a surrounding fold, the innermost if $n = 0$, second inner-most if $n = 1$, etc. This is essentially a de bruijn index, except instead of a lambda binding an argument, we have a fold binding an accumulator. The actual implementation additionally has a right fold, as well as $fold1$ variations of both, where the first element of the list is used as the initial value of the accumulator while folding over the tail of the list, but these are omitted here for brevity.
+It is essentially an instance, except with the capability of splicing in an element from another instance, or folding over many of them, to create a new instance of some other construction. The $\acc n$ alternative refers to the accumulator of a surrounding fold, the innermost if $n = 0$, second inner-most if $n = 1$, etc. This is essentially a de bruijn index, except instead of a lambda binding an argument, we have a fold binding an accumulator. The actual implementation additionally has a right fold, as well as $\mathit{fold1}$ variations of both, where the first element of the list is used as the initial value of the accumulator while folding over the tail of the list, but these are omitted here for brevity.
 
-The \mintinline{syncon}{block} syntax construction has the following expansion template:
+The \mintinline{syncon}{block} syntax construction in Listing~\ref{lst:formal-language} has the following expansion template:
 
 $$
 \begin{array}{l}
-\text{foldl} \enspace [2, *, 1] \\
-\qquad \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \enspace \text{token}'(' \enspace \text{token}'seq' \enspace \text{acc}~0 \enspace [2, *, 1] \enspace \text{token}')' \enspace \text{)} \enspace \} \\
-\qquad \text{\mintinline{syncon}{corelit}}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \}
+\foldl [2, *, 1] \\
+\quad \syncon{coreseq} :> (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
+\quad \syncon{corelit} :> (\seq \syncon{"0"}) \\
 \end{array}
 $$
 
-An additional point here is that of recursion: many macro systems allow a macro to expand to code containing the macro itself, but syntax constructions do not (neither directly nor indirectly). Disallowing recursion loses some expressive power, but EBNF operators and folds mostly make up for this loss in practice, and we gain some nice termination guarantees instead.
+An additional point here is that of recursion: many macro systems allow a macro to expand to code containing the macro itself, but syntax constructions do not (neither directly nor indirectly). Disallowing recursion loses some expressive power, but EBNF operators and folds mostly make up for this loss in practice, and we gain some nice termination guarantees instead. This will be discussed further in Section~\ref{sec:expansion-formalization}.
 
 \subsubsection{Syntax Construction}
 
@@ -1029,12 +1151,14 @@ with the following components:
 $t_c$ & The syntax type of $c$ \\
 $syntax$ & The syntax description of $c$ \\
 $S$ & The scopes introduced by $c$, a set of scopes. \\
-$B_i$ & The nested bindings of $c$, a set of tuples $(path, paths)$ where the first element is a path to an identifier and the second is a set of paths to where it is in scope. \\
+$B_i$ & The nested bindings of $c$, a set of tuples $(p, P)$ where the first element is a path to an identifier and the second is a set of paths to the leaves where it is in scope. \\
 $B_b$ and $B_a$ & The bindings $c$ exports before and after itself, respectively. Sets of paths to identifiers. \\
 $p_c$ & The precedence of $c$, $+\infty$ unless otherwise specified. \\
 $a_c$ & The associativity of $c$. \\
 $e_c$ & The expansion template of $c$. \\
 \end{tabular}
+
+A 9-tuple is somewhat unwieldy, thus later sections will generally refer to ''the $syntax$ of $c$'' to refer to the syntax description of $c$, etc., instead of listing the entire tuple and picking out the relevant component. $t_c$, $p_c$, $a_c$, and $e_c$ are exceptions to this, their name references the syntax construction in the subscript.
 
 From this we also define our concept of a language: a language defined using syntax constructions is a set of syntax constructions.
 
@@ -1042,7 +1166,7 @@ From this we also define our concept of a language: a language defined using syn
 
 The diagram in Figure~\ref{fig:formalization-flowchart} contains three components that are relevant to parsing code written in a language defined using syntax constructions: Grammar Generation, Parsing, and Ambiguity Reporting. This section will describe them, along with their connections to each other.
 
-\subsection{Grammar Generation}
+\subsection{Grammar Generation} \label{sec:formalization-grammar-generation}
 
 The algorithm for translating a set of syntax constructions to a context free grammar proceeds as described below, using the following notation:
 
@@ -1062,11 +1186,11 @@ $N^t_+$ & Highest precedence group in $t$. Note that $N^t_+ \neq N^t_-$ is not t
   \begin{itemize}
     \item For each syntax construction $c$, generate one production according to its syntax description:
     \begin{itemize}
-      \item Identifier, integer, float, string, and symbol each match one token of the corresponding kind.
+      \item $\ident$, $\integer$, $\float$, and $\mathbf{string}$ each match one token of the corresponding kind.
       \begin{itemize}
-        \item Identifier should not match an identifier with a symbol that is used as a literal in any syntax construction.
+        \item $\ident$ should not match an identifier with a symbol that is used as a literal in any syntax construction.
       \end{itemize}
-      \item A token literal matches a token of exactly the same form.
+      \item A token literal matches a token with exactly the same contents.
       \item References to a syntax type $t'$ matches non-terminals according to the following, picking the first that applies:
       \begin{itemize}
         \item If $t \neq t'$, match $N^{t'}_-$.
@@ -1074,8 +1198,8 @@ $N^t_+$ & Highest precedence group in $t$. Note that $N^t_+ \neq N^t_-$ is not t
         \item If $c$ has undefined associativity, or is left-associative and $t'$ is the leftmost occurrence, or is right-associative and $t'$ is the rightmost occurrence, match $N^t_{p_c}$.
         \item Otherwise match $next(N^t_{p_c})$.
       \end{itemize}
-      \item A parenthesized sequence matches each of its children in turn.
-      \item EBNF operators match repetitions as expected.
+      \item A $\seq$ matches each of its children in turn.
+      \item EBNF operators ($\repstar$, $\repplus$, and $\repquestion$) match repetitions as expected.
     \end{itemize}
   \end{itemize}
   \item For each non-terminal $N^t_i$ except $N^t_+$ add a production matching the non-terminal $next(N^t_i)$.
@@ -1110,10 +1234,10 @@ Generating production rules according to point 2 gives the following grammar:
 
 <ExpressionInf> ::= <Identifier>
   \alt <Integer>
-  \alt '{' (<Expression1> ';')* '}'
+  \alt '$\{$' (<Expression1> ';')* '$\}$'
 \end{grammar}
 
-where \synt{Identifier} will not match an identifier that is exactly 'def'.
+where \synt{Identifier} will not match an identifier that is exactly \syncon{"def"}.
 
 Note how the three \mintinline{syncon}{Expression}s refer to each other: \synt{Expression1} only references itself, \synt{Expression2} references itself and \synt{ExpressionInf}, and \synt{ExpressionInf} only references \synt{Expression1}. These references are determined by the precedence and associativity of the syntax construction that generated each production.
 
@@ -1134,7 +1258,7 @@ This grammar is not particularly useful however, since neither \synt{Expression2
   \alt '$\{$' (<Expression1> ';')* '$\}$'
 \end{grammar}
 
-\subsection{Parsing}
+\subsection{Parsing} \label{sec:formalization-parsing}
 
 We here assume the presence of a parsing algorithm that can handle an arbitrary CFG, for example the Earley \cite{Earley1970An-Efficient-Co} parsing algorithm. In particular, if the source code cannot be parsed unambiguously then we must be able to construct all possible parse trees.
 
@@ -1142,13 +1266,13 @@ With this in mind, the inputs of this step are the following:
 
 \begin{itemize}
   \item A context free grammar produced by the previous section.
-  \item A token stream.
+  \item A token stream representing the source code to be parsed.
 \end{itemize}
 
 The output then has three possible forms:
 
 \begin{itemize}
-  \item A single parse tree, from which we produce an instance. This is the successful case. We proceed to the next step, Name Resolution, in Section~\ref{sec:name-resolution}
+  \item A single parse tree, from which we produce an instance. This is the successful case. We proceed to the next step, Name Resolution, in Section~\ref{sec:name-resolution}.
   \item No parse trees, we could not parse the source. This is the simple failure case, report an error to the user.
   \item Two or more parse trees, from which we produce one instance each. This is the ambiguous case, the more complex failure case, in which case we move on to the next section, Ambiguity Reporting.
 \end{itemize}
@@ -1188,31 +1312,31 @@ As an example, consider the following code:
 1 + 2 + 3
 \end{minted}
 
-Parsing this code using the running example language, but without associativity for \mintinline{syncon}{sum}, we obtain the following two instances:
+Parsing this code using the running example language (Listing~\ref{lst:formal-language}), but without associativity for \mintinline{syncon}{sum}, we obtain the following two instances:
 
 $$
+\begin{array}{l|l}
 \begin{array}{l}
-\text{\mintinline{syncon}{top}}\{ \enspace \text{(} \\
-\quad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
-\qquad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
-\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'1' \enspace \text{)} \enspace \} \\
-\qquad \quad \text{token}'+' \\
-\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'2' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
-\qquad \text{token}'+' \\
-\qquad \text{\mintinline{syncon}{lit}}\{ \enspace \text{(} \enspace \text{token}'3' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
+\syncon{top} :> (\seq \\
+\quad \syncon{sum} :> (\seq \\
+\qquad (\syncon{sum} :> \\
+\qquad \quad \seq (\syncon{lit} :>\ \seq \syncon{"1"}) \\
+\qquad \quad \hphantom{\seq}\ \syncon{"+"} \\
+\qquad \quad \hphantom{\seq}\ (\syncon{lit} :>\ \seq \syncon{"2"})) \\
+\qquad \syncon{"+"} \\
+\qquad (\syncon{lit} :>\ \seq \syncon{"3"}))) \\
 \end{array}
-$$
-and
-$$
+&
 \begin{array}{l}
-\text{\mintinline{syncon}{top}}\{ \enspace \text{(} \\
-\quad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
-\qquad \text{\mintinline{syncon}{lit}}\{ \enspace \text{(} \enspace \text{token}'1' \enspace \text{)} \enspace \} \\
-\qquad \text{token}'+' \\
-\qquad \text{\mintinline{syncon}{sum}} \{ \enspace \text{(} \\
-\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'2' \enspace \text{)} \enspace \} \\
-\qquad \quad \text{token}'+' \\
-\qquad \quad \text{\mintinline{syncon}{lit}} \{ \enspace \text{(} \enspace \text{token}'3' \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \enspace \text{)} \enspace \} \\
+\syncon{top} :> (\seq \\
+\quad \syncon{sum} :> (\seq \\
+\qquad \syncon{"+"} \\
+\qquad (\syncon{lit} :>\ \seq \syncon{"1"}) \\
+\qquad (\syncon{sum} :> \\
+\qquad \quad \seq (\syncon{lit} :>\ \seq \syncon{"2"}) \\
+\qquad \quad \hphantom{\seq}\ \syncon{"+"} \\
+\qquad \quad \hphantom{\seq}\ (\syncon{lit} :>\ \seq \syncon{"3"})))) \\
+\end{array}
 \end{array}
 $$
 
@@ -1223,14 +1347,14 @@ Replacing these with two-level representations of the actual ambiguity gives us 
   \item A \mintinline{syncon}{sum} of a \mintinline{syncon}{lit} and a \mintinline{syncon}{sum}.
 \end{itemize}
 
-There is an additional subtlety in what we wish to consider as a two-level representation, stemming from the presence of internal structure in the form of parenthesized sequences and repetitions. In the example above we only consider full instances, not the internal structure, but we could just as well have chosen the following two-level representation:
+There is an additional subtlety in what we wish to consider as a two-level representation, stemming from the presence of internal structure in the form of $\seq$ and $\repseq$. In the example above we only consider full instances, not the internal structure, but we could just as well have chosen the following two-level representations:
 
 \begin{itemize}
-  \item A parenthesized sequence of a \mintinline{syncon}{sum} and a \mintinline{syncon}{lit}.
-  \item A parenthesized sequence of a \mintinline{syncon}{lit} and a \mintinline{syncon}{sum}.
+  \item A $\seq$ of a \mintinline{syncon}{sum} and a \mintinline{syncon}{lit}.
+  \item A $\seq$ of a \mintinline{syncon}{lit} and a \mintinline{syncon}{sum}.
 \end{itemize}
 
-This choice is discussed in more detail in the evaluation, in Section~\ref{sec:errors-ambiguous}. The remainder of this section will assume the second alternative (i.e. use parenthesized sequences and repetitions) and leave the first alternative as a potential engineering decision.
+This choice is discussed in more detail in the evaluation, in Section~\ref{sec:errors-ambiguous}. The remainder of this section will assume the second alternative (i.e. use $\seq$ and $\repseq$) and leave the first alternative as a potential engineering decision.
 
 The task of producing an error message then becomes selecting sub-trees from the syntax trees such that:
 
@@ -1256,106 +1380,101 @@ Finally, present to the user a set of two-level representations for each selecte
 
 % TODO: the minimal requirement is a bit weirdly formulated, we might rephrase it as (no [...] can be replaced by one or more of its children [...]), but then we need to check especially for coverage differences, so if any of the children have coverage differences across the ASTs then we select the parent, otherwise we select the children
 
-As an example, consider our running example, but once again with associativity removed for \syncon{sum}. Since Listing~\ref{lst:formal-file} contains \syncon{a + 2 + 3} we know that parsing it will produce multiple instances, in this case two. In the interest of brevity we will only show two levels of the instances at once, the node currently being compared and its children, but not its grandchildren. We will also denote shallow equality by $=_s$. Stepping through the ambiguity reporting we start by examining the top-level node of the respective trees:
+As an example, consider our running example, but once again with associativity removed for \syncon{sum}. Since Listing~\ref{lst:formal-file} contains \syncon{a + 2 + 3} we know that parsing it will produce multiple instances, in this case two. In the interest of brevity we will only show two levels of the instances at once, the node currently being compared and its children, but not its grandchildren. We will denote shallow equality by $=_s$. Stepping through the ambiguity reporting we start by examining the top-level node of the respective trees:
 
 $$
-\syncon{top}\{\enspace \text{(} \ldots \text{)} \enspace \}
-=_s
-\syncon{top}\{\enspace \text{(} \ldots \text{)} \enspace \}
-$$
-
-$$
-\text{(} \enspace \syncon{block}\{\ldots\} \enspace \text{)}
-=_s
-\text{(} \enspace \syncon{block}\{\ldots\} \enspace \text{)}
-$$
-
-$$
-\syncon{block}\{ \enspace \text{(} \ldots \text{)} \enspace \}
-=_s
-\syncon{block}\{ \enspace \text{(} \ldots \text{)} \enspace \}
-$$
-
-$$
-\begin{array}{l}
-\text{(} \enspace \text{token}'\{' \\
-\hphantom{\text{(}} \enspace \text{[} \ldots \text{]} \\
-\hphantom{\text{(}} \enspace \text{token}'\}' \enspace \text{)} \\
-\end{array}
-=_s
-\begin{array}{l}
-\text{(} \enspace \text{token}'\{' \\
-\hphantom{\text{(}} \enspace \text{[} \ldots \text{]} \\
-\hphantom{\text{(}} \enspace \text{token}'\}' \enspace \text{)} \\
+\begin{array}{rcl}
+\syncon{top} :> (\seq \ldots)
+& =_s &
+\syncon{top} :> (\seq \ldots) \\
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-\text{token}'\{' & =_s & \text{token}'\{' \\
-
-\text{[} \enspace \text{(} \ldots \text{)} \enspace \text{(} \ldots \text{)} \enspace \text{]}
+\seq (\syncon{block} :> \ldots)
 & =_s &
-\text{[} \enspace \text{(} \ldots \text{)} \enspace \text{(} \ldots \text{)} \enspace \text{]} \\
-
-\text{token}'\}' & =_s & \text{token}'\}' \\
+\seq (\syncon{block} :> \ldots) \\
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-\text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)}
+\syncon{block} :> (\seq \ldots)
 & =_s &
-\text{(} \enspace \syncon{def}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
-\text{(} \enspace \syncon{sum}\{\ldots\} \enspace \text{token}';' \enspace \text{)}
-& =_s &
-\text{(} \enspace \syncon{sum}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
+\syncon{block} :> (\seq \ldots) \\
 \end{array}
 $$
-
-Under normal circumstances we would now have to descend into both children, but in the interest of brevity we will instead note that the first child is fully equal across the two trees (there is no ambiguity there). Descending through it will thus never come across any instances that are not shallowly equal. We will thus only concern ourselves with descent into the second child:
 
 $$
 \begin{array}{rcl}
-\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+\seq \syncon|"{"|\ (\repseq \ldots)\ \syncon|"}"|
 & =_s &
-\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \} \\
-
-\text{token}';' & =_s & \text{token}';' \\
+\seq \syncon|"{"|\ (\repseq \ldots)\ \syncon|"}"| \\
 \end{array}
 $$
-
-$$
-\begin{array}{l}
-\text{(} \enspace \syncon{sum}\{\ldots\} \\
-\hphantom{\text{(}} \enspace \text{token}'+' \\
-\hphantom{\text{(}} \enspace \syncon{lit}\{\ldots\} \\
-\end{array}
-=_s
-\begin{array}{l}
-\text{(} \enspace \syncon{var}\{\ldots\} \\
-\hphantom{\text{(}} \enspace \text{token}'+' \\
-\hphantom{\text{(}} \enspace \syncon{sum}\{\ldots\} \\
-\end{array}
-$$
-
-This is the first point where we see any inequality, but the two instances are still shallowly equal, since both are parenthesized sequences and both cover the same area of the source code.
 
 $$
 \begin{array}{rcl}
-\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+\syncon|"{"| & =_s & \syncon|"{"| \\
+
+\repseq (\seq \ldots)\ (\seq \ldots)
+& =_s &
+\repseq (\seq \ldots)\ (\seq \ldots) \\
+
+\syncon|"}"| & =_s & \syncon|"}"| \\
+\end{array}
+$$
+
+$$
+\begin{array}{rcl}
+\seq (\syncon{def} :> \ldots)\ \syncon{";"}
+& =_s &
+\seq (\syncon{def} :> \ldots)\ \syncon{";"} \\
+
+\seq (\syncon{sum} :> \ldots)\ \syncon{";"}
+& =_s &
+\seq (\syncon{sum} :> \ldots)\ \syncon{";"} \\
+\end{array}
+$$
+
+Under normal circumstances we would now have to descend into both children (i.e. both $(\seq \syncon{def} \ldots)$ and $(\seq \syncon{sum} \ldots)$), but in the interest of brevity we will instead note that the first child is fully equal across the two trees (there is no ambiguity there). Descending through it will thus never come across any instances that are not shallowly equal. We will thus only concern ourselves with descent into the second child:
+
+$$
+\begin{array}{rcl}
+\syncon{sum} :> (\seq \ldots)
+& =_s &
+\syncon{sum} :> (\seq \ldots) \\
+
+\syncon{";"} & =_s & \syncon{";"} \\
+\end{array}
+$$
+
+$$
+\begin{array}{rcl}
+\seq (\syncon{sum} :> \ldots)\ \syncon{"+"}\ (\syncon{lit} :> \ldots)
+& =_s &
+\seq (\syncon{var} :> \ldots)\ \syncon{"+"}\ (\syncon{sum} :> \ldots)
+\end{array}
+$$
+
+This is the first point where we see any inequality, but the two instances are still shallowly equal, since both have the form $(\seq \ldots)$ and both cover the same area of the source code.
+
+$$
+\begin{array}{rcl}
+\syncon{sum} :> (\seq \ldots)
 & \not=_s &
-\syncon{var}\{ \enspace \text{(} \ldots \text{)} \enspace \} \enspace \text{)} \\
+\syncon{var} :> (\seq \ldots) \\
 
-\text{token}'+' & \not=_s & \text{token}'+' \\
+\syncon{"+"} & \not=_s & \syncon{"+"} \\
 
-\syncon{lit}\{ \enspace \text{(} \ldots \text{)} \enspace \}
+\syncon{lit} :> (\seq \ldots)
 & \not=_s &
-\syncon{sum}\{ \enspace \text{(} \ldots \text{)} \enspace \} \enspace \text{)} \\
+\syncon{sum} :> (\seq \ldots) \\
 \end{array}
 $$
 
-Note here than none of the children are shallowly equal. In particular, the ''$+$'' tokens cover different areas of the source code (they are the second and first ''$+$'' in the source code respectively). We thus select the parent and present that as the one ambiguity in the source code.
+Note here than none of the children are shallowly equal. In particular, the \syncon{"+"} tokens cover different areas of the source code (they are the second and first ''\syncon{+}'' in the source code respectively). We thus select the parent and present that as the one ambiguity in the source code.
 
 \section{Further Properties of Paths} \label{sec:paths}
 
@@ -1367,43 +1486,52 @@ We now define a relation $p_1 \subseteq p_2$ between two paths, where
 
 $$
 \begin{array}{ll}
-path \subseteq path & \\
-n : path \subseteq n : path' & \text{ if } path \subseteq path' \\
-n : path \subseteq * : path' & \text{ if } path \subseteq path' \\
+p \subseteq p & (\subseteq \text{is reflexive}) \\
+n : p \subseteq n : p' & \text{ if } p \subseteq p' \\
+n : p \subseteq * : p' & \text{ if } p \subseteq p' \\
 \end{array}
 $$
 
 % TODO: the \forall here is a little bit iffy, since we only consider things for a single syntax construction
-We justify the notation by noting that if $p_1 \subseteq p_2$ then $p_1(syntax) = p_2(syntax)$ and $\forall c\{i\}.\ p_1(i) \subseteq p_2(i)$ (keeping in mind that a path is limited to the syntax construction in which it is defined, that it must select a single \synt{Syntax} element in $syntax$, and that the structure of an instance mirrors the structure of $syntax$). We say that $p_1$ is a more specific version of $p_2$.
-
-For example, $[2, 1, 1] \subseteq [2, *, 1]$, the former selects the first sub-expression in a \mintinline{syncon}{block} instance (see Listing~\ref{lst:formal-language}), while the latter selects \emph{all} sub-expressions.
-
-\newcommand{\specialize}{\ensuremath{\mathit{specialize}}}
-
-We also wish to be able to specialize a $path$ using some more specific path $spec$, i.e. $\specialize(path, spec) \subseteq path$. Note that the fourth case below allow $path$ and $spec$ to diverge (i.e. we do not require $spec \subseteq path$), in which case the specialization is only applied to their shared prefix.
+We justify the notation by noting that given two paths $p_1$ and $p_2$ that belong to syntax construction $c$, and that $s$ is the syntax description of $c$, we have:
 
 $$
 \begin{array}{rcl}
-\specialize(path, []) & = & path \\
-\specialize(*:path, n:spec) & = & n : \specialize(path, spec) \\
-\specialize(*:path, \_:spec) & = & * : \specialize(path, spec) \\
-\specialize(n:path, n':spec) & = &
+p_1 \subseteq p_2 & -> & \follow(p_1, s) = \follow(p_2, s) \\
+p_1 \subseteq p_2 & -> & \forall (c :> i).\ \follow(p_1, i) \subseteq \follow(p_2, i) \\
+\end{array}
+$$
+
+We see this by noting that the structure of an instance mirrors that of the syntax description, and that a $*$ step is only allowed through an EBNF operator (i.e. $\repstar$, $\repplus$, or $\repquestion$ in the syntax description, and $\repseq$ in an instance). We say that $p_1$ is a more specific version of $p_2$.
+
+For example, $[2, 1, 1] \subseteq [2, *, 1]$. The former selects the first sub-expression in a \mintinline{syncon}{block} instance (Listing~\ref{lst:formal-language}), while the latter selects \emph{all} sub-expressions.
+
+\newcommand{\specialize}{\ensuremath{\mathit{specialize}}}
+
+We also wish to be able to specialize a path $p$ using some other path $p'$, i.e. $\specialize(p, p') \subseteq p$. Note that the fourth case below allow $p$ and $p'$ to diverge (i.e. we do not require $p' \subseteq p$), in which case the specialization is only applied to their shared prefix.
+
+$$
+\begin{array}{rcl}
+\specialize(p, []) & = & p \\
+\specialize(*:p, n:p') & = & n : \specialize(p, p') \\
+\specialize(*:p, *:p') & = & * : \specialize(p, p') \\
+\specialize(n:p, n':p') & = &
 \begin{cases}
-  path & n \neq n' \\
-  n : \specialize(path, spec) & n = n' \\
+  p & n \neq n' \\
+  n : \specialize(p, p') & n = n' \\
 \end{cases} \\
 \end{array}
 $$
 
-For example, $\specialize([2, *, 2], [2, 1, 1]) = [2, 1, 2]$.
+For example, $\specialize([2, *, 2, *], [2, 1, 1, 1]) = [2, 1, 2, *]$.
 
 \section{Name Resolution} \label{sec:name-resolution}
 
 \newcommand{\rooti}{\ensuremath{\mathit{root}}}
 
-Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as \rooti, and will by construction have the shape $c\{i\}$ (i.e., it is an instance of some syntax construction $c$).
+Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as \rooti, and will by construction have the shape $c :> i$ (i.e., it is an instance of some syntax construction $c$).
 
-We assume that each node is unique and distinct from all other nodes in the tree, and in particular that it can be used as the key in a mapping. This could, for example, be accomplished by attaching a unique number to each node across the tree. Furthermore, we can attach an ordering between two nodes if neither is a descendant of the other by using their position in the syntax tree; a node $a$ is before another node $b$ if it appears earlier in the tree, in which case we will write $a < b$.
+We assume that each node is unique and distinct from all other nodes in the tree, and in particular that it can be used as the key in a mapping. This could, for example, be accomplished by attaching a unique number to each node across the tree. Furthermore, we can attach an ordering between two nodes if neither is a descendant of the other. A node $a$ is before another node $b$ if it appears earlier in the tree, in which case we will write $a < b$.
 
 % TODO: is "to the left" sufficiently well defined?
 
@@ -1417,8 +1545,9 @@ This section will also be strict about the distinction between an identifier and
 \end{minted}
 
 \newcommand{\sym}{\ensuremath{\mathit{symbol}}}
+\newcommand{\symlit}[1]{\text{''#1''}}
 
-has two identifiers with the same symbol: ''a''. We will write $\sym(i)$ to denote the symbol of the identifier $i$.
+has two identifiers with the same symbol: \symlit{a}. We will write $\sym(i)$ to denote the symbol of the identifier $i$. A symbol will be written as its text in quotations, i.e., \symlit{a} is a symbol, not to be confused with \syncon{"a"}, which is an identifier.
 
 First, we wish to find all the identifiers that are in a binding position:
 
@@ -1426,25 +1555,25 @@ First, we wish to find all the identifiers that are in a binding position:
 
 $$
 \begin{array}{rcl}
-\binders(c\{i\}) & = & i_b \cup i_a \cup i_i \cup i_c \\
+\binders(c :> i) & = & i_b \cup i_a \cup i_i \cup i_c \\
 \text{where} & & \\
-i_b & = & \{ path(i) \mid path \in B_b \text{ of } c\} \\
-i_a & = & \{ path(i) \mid path \in B_a \text{ of } c\} \\
-i_i & = & \{ path(i) \mid (path, \_) \in B_i \text{ of } c\} \\
-i_c & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\})} \binders(c'\{i'\}) \\
+i_b & = & \{ \follow(p, i) \mid p \in B_b \text{ of } c\} \\
+i_a & = & \{ \follow(p, i) \mid p \in B_a \text{ of } c\} \\
+i_i & = & \{ \follow(p, i) \mid (p, \_) \in B_i \text{ of } c\} \\
+i_c & = & \bigcup_{(c' :> i') \in \leaves(c :> i)} \binders(c' :> i') \\
 \end{array}
 $$
 
-For example, using the instance for the inner-most \mintinline{syncon}{block} (writing it as $\syncon{block}\{i\}$) in our running example:
+For example, using the instance for the innermost \mintinline{syncon}{block} (writing it as $\syncon{block} :> i$) in Listing~\ref{lst:formal-file}:
 
 $$
 \begin{array}{rcl}
-\binders(\text{\mintinline{syncon}{block}}\{i\}) & = & i_b \cup i_a \cup i_i \cup i_c = \{\text{token}'a'\}\\
+\binders(\syncon{block} :> i) & = & i_b \cup i_a \cup i_i \cup i_c = \{\syncon{"a"}\}\\
 \text{where} & & \\
-i_b & = & \{ path(i) \mid path \in \emptyset \} = \emptyset \\
-i_a & = & \{ path(i) \mid path \in \emptyset \} = \emptyset \\
-i_i & = & \{ path(i) \mid (path, \_) \in \emptyset \} = \emptyset \\
-i_c & = & \binders(\syncon{def}\{\ldots\}) = \{\text{token}'a'\} \\
+i_b & = & \{ \follow(p, i) \mid p \in \emptyset \} = \emptyset \\
+i_a & = & \{ \follow(p, i) \mid p \in \emptyset \} = \emptyset \\
+i_i & = & \{ \follow(p, i) \mid (p, \_) \in \emptyset \} = \emptyset \\
+i_c & = & \binders(\syncon{def} :> \ldots) = \{\syncon{"a"}\} \\
 \end{array}
 $$
 
@@ -1452,16 +1581,17 @@ Second, we need a mapping $\Gamma$ from $\binders(\rooti)$ to new unique symbols
 
 Third, we wish to determine the scope of each node in the tree. Similar to syntax constructions and their instances we introduce scope instances, described by the following grammar:
 
-\newcommand{\rootscope}{\ensuremath{s'_{\rooti}}}
+\newcommand{\rootscope}{\ensuremath{\mathrel{\text{\textbf{root-scope}}}}}
+\newcommand{\scopeinst}{\mathrel{\text{\textbf{scope-inst}}}}
 
 \begin{grammar}
-<Scope-Instance> ::= '(' $paths$ ',' <Scope-Instance> ')'
+<scope-instance> ::= $\scopeinst P$ <scope-instance>
   \alt \rootscope
 \end{grammar}
 
-The first case represents most instances and consists of two components: a set of paths to the leaves it covers, and its parent scope instance. The second case is the root scope, to which $\rooti$ belongs.
+The first case represents most instances and consists of two components: a set of paths to the leaves it covers, and its parent scope instance. The second case is the root scope.
 
-For example, the outer-most \mintinline{syncon}{block} instance in our running example introduces one scope instance:
+For example, the outermost \mintinline{syncon}{block} instance in Listing~\ref{lst:formal-file} (lines~1-7) introduces one scope instance:
 
 $$
 (\{[2, *, 1]\}, \rootscope)
@@ -1469,51 +1599,52 @@ $$
 
 We will further write $s'_c -> s'_p$ to mean that $s'_p$ is the parent scope of $s'_c$, and $s' ->* s''$ as the reflexive, transitive closure of this relation. Since each node will be assigned to a single scope we will write $i \in s'$ to mean that $i$ belongs to scope instance $s'$, which then selects a unique scope instance per $i$.
 
-Additionally, we will define the scope instance of \rooti\ to be \rootscope, i.e.:
+Additionally, we will define the scope instance of $\rooti$ to be $\rootscope$, i.e.:
 
-$$ \rooti \in \rootscope $$
+$$ \rooti \in\ \rootscope $$
 
 \newcommand{\instantiate}{\ensuremath{\mathit{instantiate}}}
 
-Given a scope $s$ and a path $p$ to a leaf, both belonging to an instance $c\{i\}$, the scope instance $s'$ of $s$ is given by $s' = \instantiate(c\{i\}, p, s)$:
+Given a scope $s$ and a path $p$ to a leaf, both belonging to an instance $c :> i$, the scope instance of $s$ is given by $\instantiate(c :> i, p, s)$:
 
 $$
 \begin{array}{rcl}
-\instantiate(c\{i\}, p, near) & = & s' \text{ where } c\{i\} \in s' \\
-\instantiate(c\{i\}, p, \text{(}rep, P, s\text{)}) & = & \text{(}P', parent\text{)} \\
+\instantiate(c :> i, p, \near) & = & s' \text{ where } c :> i \in s' \\
+\instantiate(c :> i, p, \text{(}rep, P, s\text{)}) & = & \text{(}P', parent\text{)} \\
+\instantiate(c :> i, p, \scope r\ P\ s) & = & \scopeinst P'\ s' \\
 \text{where} & & \\
-rep' & = & \specialize(rep, p) \\
-P' & = & \{\specialize(p', rep') \mid p' \in P\} \\
-parent & = & \instantiate(c\{i\}, p, s) \\
+r' & = & \specialize(r, p) \\
+P' & = & \{\specialize(p', r') \mid p' \in P\} \\
+s' & = & \instantiate(c :> i, p, s) \\
 \end{array}
 $$
 
-We are now ready to determine the scope instance any non-root leaf belongs to. Given a leaf $i$, that is a leaf of $c\{i_p\}$, find the scope $s$ in $c$ that covers $i$, then instantiate it:
+We are now ready to determine the scope instance any non-root leaf belongs to. Given a leaf $i$, that is a leaf of $c :> i'$, find the scope $s$ in $c$ that covers $i$, then instantiate it:
 
 $$
 \inference{
-  i \in \leaves(c\{i_p\}) &
-  path(i_p) = \{i\} &
-  path \subseteq path' \\
-  path' \in \cover(s) &
+  i \in \leaves(c :> i') &
+  follow(p, i') = \{i\} &
+  p \subseteq p' \\
+  p' \in \cover(s) &
   s \in scopes \text{ of } c
-}{i \in \instantiate(c\{i_p\}, path, s)}
+}{i \in \instantiate(c :> i', p, s)}
 $$
 
 We can now start considering actual bindings. For each node we will compute a set of available bound symbols. Each binding is represented by a 3-tuple consisting of a symbol, a scope instance, and a generated symbol. The first two components denote that the symbol definition is in the given scope instance, while the last component is the generated replacement symbol from $\Gamma$ above.
 
-As an example, $\{(\mathit{foo}, s'_1, \mathit{bar}), (\mathit{foo}, s'_2, \mathit{baz})\}$ has two bindings of the symbol $\mathit{foo}$, one bound in $s'_1$, the other in $s'_2$, replaced by $\mathit{bar}$ and $\mathit{baz}$ respectively.
+As an example, $\{(\symlit{foo}, s'_1, \symlit{bar}), (\symlit{foo}, s'_2, \symlit{baz})\}$ has two bindings of the symbol $\symlit{foo}$, one bound in $s'_1$, the other in $s'_2$, replaced by $\symlit{bar}$ and $\symlit{baz}$ respectively.
 
 \newcommand{\lookup}{\ensuremath{\mathit{lookup}}}
 
-The \lookup\ function below defines shadowing behavior: a binding of a symbol in a child scope shadows the same symbol in a parent scope. The first case also assumes that we will never produce a binding set with more than one element that share the first two components, which would represent a redefinition of a symbol in the same scope.
+The $\lookup$ function below defines shadowing behavior: a binding of a symbol in a child scope shadows the same symbol in a parent scope. The first case also assumes that we will never produce a binding set with more than one element that share the first two components, which would represent a redefinition of a symbol in the same scope.
 
 $$
-\lookup(sym, s', \gamma) =
+\lookup(\mathit{sym}, s', \gamma) =
 \begin{cases}
-\mathit{sym}' & (sym, s', \mathit{sym}') \in \gamma \\
-\lookup(sym, s'', \gamma) & (sym, s', \_) \not\in \gamma \land s' -> s'' \\
-\bot & (sym, s', \_) \not\in \gamma \land s' = s_r
+\mathit{sym}' & (\mathit{sym}, s', \mathit{sym}') \in \gamma \\
+\lookup(\mathit{sym}, s'', \gamma) & (\mathit{sym}, s', \_) \not\in \gamma \land s' -> s'' \\
+\bot & (\mathit{sym}, s', \_) \not\in \gamma \land s' =\ \rootscope
 \end{cases}
 $$
 
@@ -1521,55 +1652,53 @@ At this point we have our definitions for binding errors: an unbound symbol prod
 
 The latter error has some subtleties. We could defer the error until $\lookup$ would find multiple choices, i.e. make it an error to have an ambiguous reference instead of making it an error to redefine a symbol, but the latter tends to be a programming error even if it does not lead to any ambiguity.
 
-The exported ''before'' and ''after'' bindings of an instance $c\{i\} \in s'$, written as $E_b(c\{i\})$ and $E_a(c\{i\})$ respectively, are given by:
+The exported \syncon{before} and \syncon{after} bindings of an instance $(c :> i) \in s'$, written as $E_b(c :> i)$ and $E_a(c :> i)$ respectively, are given by:
 
 $$
 \begin{array}{rcl}
-E_b(c\{i\}) & = & \mathit{immediate} \cup \mathit{transitive} \\
+E_b(c :> i) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-\mathit{transitive} & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\}), c'\{i'\} \in s'} E_b(c'\{i'\}) \\
-\mathit{immediate} & = & \bigcup_{path \in B_b} \{(\sym(path(c\{i\})), s', \Gamma(path(c\{i\})))\}
+\mathit{transitive} & = & \bigcup_{(c' :> i') \in \leaves(c :> i), (c' :> i') \in s'} E_b(c' :> i') \\
+\mathit{immediate} & = & \bigcup_{p \in B_b} \{(\sym(\follow(p, i)), s', \Gamma(\follow(p, i)))\}
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-E_a(c\{i\}) & = & \mathit{immediate} \cup \mathit{transitive} \\
+E_a(c :> i) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-\mathit{transitive} & = & \bigcup_{c'\{i'\} \in \leaves(c\{i\}), c'\{i'\} \in s'} E_a(c'\{i'\}) \\
-\mathit{immediate} & = & \bigcup_{path \in B_a} \{(\sym(path(c\{i\})), s', \Gamma(path(c\{i\})))\}
+\mathit{transitive} & = & \bigcup_{(c' :> i') \in \leaves(c :> i), (c' :> i') \in s'} E_a(c' :> i') \\
+\mathit{immediate} & = & \bigcup_{p \in B_a} \{(\sym(\follow(p, i)), s', \Gamma(\follow(p, i)))\}
 \end{array}
 $$
 
-Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in \leaves(c\{i_p\})$ where $path(i_p) = \{i\}$, is given by $E_i(i)$:
-
-% TODO: there are some rather complicated things we range over in some \bigcup(s), need a better way to write that
+Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in \leaves(c :> i')$ where $follow(p, i') = \{i\}$, is given by $E_n(i)$:
 
 $$
 \begin{array}{rcl}
-E_i(\rooti) & = & \emptyset \\
-E_i(i) & = & E_i(c\{i_p\})\ \cup \\
-& & \{ symbol(p(i_p)) \mid (p, P) \in B_i \land \exists p' \in P.\ path \subseteq p'\} \\
+E_n(\rooti) & = & \emptyset \\
+E_n(i) & = & E_n(c :> i'\})\ \cup \\
+& & \{ symbol(\follow(p, i')) \mid (p, P) \in B_i \land \exists p' \in P.\ p \subseteq p'\} \\
 \end{array}
 $$
 
-Note the difference between $E_a(i)$, $E_b(i)$, and $E_i(i)$: the former two give the set of bindings \emph{exported} by $i$, while the latter gives the set of bindings \emph{usable} in $i$.
+Note the difference between $E_a(i)$, $E_b(i)$, and $E_n(i)$: the former two give the set of bindings \emph{exported} by $i$, while the latter gives the set of bindings \emph{usable} in $i$.
 
-% TODO: MARK: I've gotten this far in the formalization "rewrite", everything beyond this point has only been update to be consistent in syntax (i.e. c~i vs c\{i\})
+% TODO: MARK: I've gotten this far in the formalization "rewrite", everything beyond this point has only been update to be consistent in syntax (i.e. c~i vs c\{i\} vs (c :> i))
 
-With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from 'Identifier' (as opposed to a token literal) with a newly generated symbol. Given an identifier $ident \in \leaves(c\{i\})$ with scope $ident \in s'$, $path(c\{i\}) = \{ident\}$, and $syntax$ being the syntax description of $c$, we will only perform the below substitution if $path(syntax) = \text{'Identifier'}$.
+With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from $\ident$ (as opposed to a token literal) with a newly generated symbol. Given an identifier $id \in \leaves(c :> i)$ with scope $id \in s'$, $\follow(p, i) = \{id\}$, and $syntax$ being the syntax description of $c$, we will only perform the below substitution if $\follow(p, syntax) =\ \ident$.
 
 $$
 \begin{array}{rcl}
-\sym(ident) & <- &
+\sym(id) & <- &
 \begin{cases}
-\Gamma(ident) & ident \in \binders(\rooti) \\
-\lookup(\sym(ident), s', \gamma) & ident \not\in \binders(\rooti) \\
+\Gamma(id) & id \in \binders(\rooti) \\
+\lookup(\sym(id), s', \gamma) & id \not\in \binders(\rooti) \\
 \end{cases} \\
 \text{where} & & \\
-\gamma & = & a \cup b \cup E_i(ident) \\
-a & = & \bigcup_{c'\{i'\} \in s'' \land s' ->* s'' \land c'\{i'\} < ident} E_a(c'\{i'\}) \\
-b & = & \bigcup_{c'\{i'\} \in s'' \land s' ->* s'' \land c'\{i'\} > ident} E_b(c'\{i'\}) \\
+\gamma & = & a \cup b \cup E_n(id) \\
+a & = & \bigcup_{(c' :> i') \in s'' \land s' ->* s'' \land (c' :> i') < id} E_a(c' :> i') \\
+b & = & \bigcup_{(c' :> i') \in s'' \land s' ->* s'' \land (c' :> i') > id} E_b(c' :> i') \\
 \end{array}
 $$
 
@@ -1584,54 +1713,54 @@ The process is made somewhat more complicated by the presence of EBNF operators 
 $$
 \begin{array}{rcl}
 \specs([], i) & = & \{[]\} \\
-\specs(n:path, (\overline{i})) & = & \{n : p \mid p \in \specs(path, i_n)\} \\
-\specs(n:path, [\overline{i}]) & = & \{n : p \mid p \in \specs(path, i_n)\} \\
-\specs(*:path, [\overline{i}]) & = & \bigcup\limits_{n} \{n:p \mid p \in \specs(path, i_n)\} \\
+\specs(n:p, \seq \overline{i}) & = & \{n : p' \mid p' \in \specs(p, i_n)\} \\
+\specs(n:p, \repseq \overline{i}) & = & \{n : p' \mid p' \in \specs(p, i_n)\} \\
+\specs(*:p, \repseq \overline{i}) & = & \bigcup\limits_{n} \{n:p' \mid p' \in \specs(p, i_n)\} \\
 \end{array}
 $$
 
-Note that while this function uses set-notation, the order of the paths will be important while folding. The order is easily recovered however using a simple lexicographic sorting of the paths.
+Note that while this function uses set-notation, the order of the paths will be important while folding. The order is easily recovered however using a simple lexicographic sorting of the paths. All later uses of $\specs$ will thus be considered to return an ordered sequence of paths, rather than a set.
 
-As an example, consider the outer-most \mintinline{syncon}{block} instance (covering all lines) obtained from the code in Listing~\ref{lst:formal-file}. It has the following form:
+As an example, consider the outermost \mintinline{syncon}{block} instance (covering all lines) obtained from the code in Listing~\ref{lst:formal-file}. It has the following form:
 
 $$
 \begin{array}{l}
-\text{\mintinline{syncon}{block}}\{ \\
-\quad \text{token}'\{' \\
-\quad \text{[} \enspace \text{(} \enspace \text{\mintinline{syncon}{def}}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \\
-\quad \hphantom{\text{[}} \enspace \text{(} \enspace \text{\mintinline{syncon}{sum}}\{\ldots\} \enspace \text{token}';' \enspace \text{)} \enspace \text{]} \\
-\quad \text{token}'\}' \enspace \} \\
+\syncon{block} :> \\
+\quad \seq \syncon|"{"|\\
+\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} :> \ldots)\ \syncon{";"}) \\
+\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{sum} :> \ldots)\ \syncon{";"})) \\
+\quad \hphantom{\seq }\ \syncon|"}"| \\
 \end{array}
 $$
 
-As such $\specs([2, *, 1], \syncon{block}\{\ldots\}) = [[2, 1, 1], [2, 2, 1]]$.
+As such $\specs([2, *, 1], \syncon{block} :> \ldots) = [[2, 1, 1] [2, 2, 1]]$.
 
 \newcommand{\expand}{\ensuremath{\mathit{expand}}}
 
-Expansion (via $\expand$ below) then traverses the template (the fourth argument, $e_c$), while keeping track of the current item in a fold ($spec$), the related accumulators ($\overline{acc}$), and the instance being expanded ($inst$). Most cases are fairly straightforward:
+Expansion (via $\expand$ below) then traverses the template (the fourth argument, $e_c$), while keeping track of the current item in a fold ($p$), the related accumulators ($\overline{acc}$), and the instance being expanded ($i$). Most cases are fairly straightforward recursion:
 
 $$
 \begin{array}{rcl}
-\expand(inst, spec, \overline{acc}, path) & = & i \text{ where } \specialize(path, spec)(inst) = \{i\} \\
-\expand(inst, spec, \overline{acc}, \text{acc}~n) & = & acc_n \\
-\expand(inst, spec, \overline{acc}, c\{i\}) & = & c\{\enspace \expand(inst, spec, \overline{acc}, i) \enspace \} \\
-\expand(inst, spec, \overline{acc}, token) & = & token \\
-\expand(inst, spec, \overline{acc}, (\, \overline{i} \,)) & = & (\enspace \overline{\expand(inst, spec, \overline{acc}, i_n)} \enspace) \\
-\expand(inst, spec, \overline{acc}, [\, \overline{i}] \,) & = & [\enspace \overline{\expand(inst, spec, \overline{acc}, i_n)} \enspace] \\
+\expand(i, p, \overline{acc}, p') & = & i' \text{ where } \follow(\specialize(p', p), i) = \{i'\} \\
+\expand(i, p, \overline{acc}, \acc~n) & = & acc_n \\
+\expand(i, p, \overline{acc}, c :> i') & = & c :> \expand(i, p, \overline{acc}, i') \\
+\expand(i, p, \overline{acc}, \synt{token}) & = & \synt{token} \\
+\expand(i, p, \overline{acc}, \seq \overline{i'} ) & = & \seq \overline{\expand(i, p, \overline{acc}, i'_n)} \\
+\expand(i, p, \overline{acc}, \repseq \overline{i'}) & = & \repseq \overline{\expand(i, p, \overline{acc}, i'_n)} \\
 \end{array}
 $$
-The one remaining case, foldl, is somewhat more involved:
+The one remaining case, $\foldl$, is somewhat more involved:
 $$
 \begin{array}{rcl}
-\expand(inst, spec, \overline{acc}, \text{foldl}~path~f~i) & = & \mathit{foldl}(f', f_0, specs') \\
+\expand(i, p, \overline{acc}, \foldl~p'~f~i') & = & \mathit{foldl}(f', f_0, P) \\
 \end{array}
 $$
 where
 $$
 \begin{array}{rcl}
-f' & = & \lambda spec'~acc'.~ \expand(inst, spec', acc'~\overline{acc}, f) \\
-f_0 & = & \expand(inst, spec, \overline{acc}, i) \\
-specs' & = & \specs(\specialize(path, spec), inst) \\
+f' & = & \lambda p'~acc'.~ \expand(i, p', acc'~\overline{acc}, f) \\
+f_0 & = & \expand(i, p, \overline{acc}, i') \\
+P & = & \specs(\specialize(p', p), inst) \\
 \end{array}
 $$
 
@@ -1641,9 +1770,9 @@ As an example, \syncon{block} has the following expansion template:
 
 $$
 \begin{array}{l}
-\text{foldl} \enspace [2, *, 1] \\
-\qquad \syncon{coreseq}\{ \enspace \text{(} \enspace \text{token}'(' \enspace \text{token}'seq' \enspace \text{acc}~0 \enspace [2, *, 1] \enspace \text{token}')' \enspace \text{)} \enspace \} \\
-\qquad \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \} \\
+\foldl [2, *, 1] \\
+\quad \syncon{coreseq} :> (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
+\quad \syncon{corelit} :> (\seq \syncon{"0"}) \\
 \end{array}
 $$
 
@@ -1651,47 +1780,55 @@ Expanding the instance given above proceeds as follows, using $i$ to refer to th
 
 $$
 \begin{array}{l}
-\expand(i, [], [], \text{foldl}~[2, *, 1]~\syncon{coreseq}\{\ldots\}~\syncon{corelit}\{\ldots\}) \\
-\qquad = \mathit{foldl}(f', f_0, specs') \\
+\expand(i, [], \epsilon, \foldl~[2, *, 1]~(\syncon{coreseq} :> \ldots)~(\syncon{corelit} :> \ldots)) \\
+\qquad = \mathit{foldl}(f', f_0, P) \\
 \end{array}
 $$
 where
 $$
 \begin{array}{rcl}
-f' & = & \lambda spec'~acc'.~ \expand(i, spec', [acc'], \syncon{corelit}\{\ldots\}) \\
-f_0 & = & \expand(i, [], [], \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \})\\
-& = & \syncon{corelit}\{ \enspace \expand(i, [], [], \text{(} \enspace \text{token}'0' \enspace \text{)}) \enspace \} \\
-& = & \syncon{corelit}\{ \enspace \text{(} \enspace \expand(i, [], [], \text{token}'0') \enspace \text{)} \enspace \} \\
-& = & \syncon{corelit}\{ \enspace \text{(} \enspace \text{token}'0' \enspace \text{)} \enspace \} \\
-specs' & = & \specs(\specialize([2, *, 1], []), i) \\
+f' & = & \lambda p'~acc'.~ \expand(i, p', [acc'], \syncon{corelit} :> \ldots) \\
+f_0 & = & \expand(i, [], \epsilon, \syncon{corelit} :> (\seq \syncon{"0"}) \\
+& = & \syncon{corelit} :> \expand(i, [], \epsilon, \seq \syncon{"0"}) \\
+& = & \syncon{corelit} :> (\seq \expand(i, [], \epsilon, \syncon{"0"})) \\
+& = & \syncon{corelit} :> (\seq \syncon{"0"}) \\
+P & = & \specs(\specialize([2, *, 1], []), i) \\
 & = & \specs([2, *, 1], i) \\
 & = & [[2, 1, 1], [2, 2, 1]] \\
 \end{array}
 $$
 
-$\mathit{foldl}$ will then call $f'$ twice, once with $spec' = [2, 1, 1]$ and $acc' = f_0$, and once with $spec' = [2, 2, 1]$ and $acc' = f_1$, where $f_1$ is the result of the previous call. It is here useful to note that a sub-tree that does not contain either $\text{acc}~n$ or a $path$ always expands to itself, hence we will omit those expansions below.
+$\mathit{foldl}$ will then call $f'$ twice, once with $p' = [2, 1, 1]$ and $acc' = f_0$, and once with $p' = [2, 2, 1]$ and $acc' = f_1$, where $f_1$ is the result of the previous call. It is here useful to note that a subtree that does not contain either $\acc~n$ or a path always expands to itself, hence we will omit those expansions below.
 
 The first $f'$ call proceeds as follows:
 
 $$
 \begin{array}{rcl}
-f'~[2, 1, 1]~f_0 & = & \expand(i, [2, 1, 1], [f_0], \text{\mintinline{syncon}{coreseq}}\{\enspace \text{(}\ldots\text{)} \enspace \}) \\
-& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \expand(i, [2, 1, 1], [f_0], \text{(} \ldots \text{)}) \enspace \} \\
-& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
-& & \quad \text{token}'(' \\
-& & \quad \text{token}'seq' \\
-& & \quad \expand(i, [2, 1, 1], [f_0], \text{acc}~0) \\
-& & \quad \expand(i, [2, 1, 1], [f_0], [2, *, 1]) \\
-& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
-& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
-& & \quad \text{token}'(' \\
-& & \quad \text{token}'seq' \\
-& & \quad f_0 \\
-& & \quad \text{\mintinline{syncon}{def}}\{\ldots\} \text{ since} \\
-& & \qquad \specialize([2, *, 1], [2, 1, 1])(i) \\
-& & \qquad \quad = [2, 1, 1](i) \\
-& & \qquad \quad = \{\text{\mintinline{syncon}{def}}\{\ldots\}\} \\
-& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+f'~[2, 1, 1]~f_0 & = & \expand(i, [2, 1, 1], f_0, \syncon{coreseq} :> (\seq \ldots)) \\
+& = & \syncon{coreseq} :> \\
+& & \quad \expand(i, [2, 1, 1], f_0, \seq \\
+& & \qquad \syncon{"("} \\
+& & \qquad \syncon{"seq"} \\
+& & \qquad \acc~0 \\
+& & \qquad [2, *, 1] \\
+& & \qquad \syncon{")"}) \\
+& = & \syncon{coreseq} :> \\
+& & \quad \seq \\
+& & \qquad \syncon{"("} \\
+& & \qquad \syncon{"seq"} \\
+& & \qquad \expand(i, [2, 1, 1], f_0, \acc~0) \\
+& & \qquad \expand(i, [2, 1, 1], f_0, [2, *, 1]) \\
+& & \qquad \syncon{")"} \\
+& = & \syncon{coreseq} :> \\
+& & \quad \seq \\
+& & \qquad \syncon{"("} \\
+& & \qquad \syncon{"seq"} \\
+& & \qquad f_0 \\
+& & \qquad (\syncon{def} :> \ldots) \text{ since} \\
+& & \qquad \quad \follow(\specialize([2, *, 1], [2, 1, 1]), i) \\
+& & \qquad \qquad = \follow([2, 1, 1], i) \\
+& & \qquad \qquad = (\syncon{def} :> \ldots) \\
+& & \qquad \syncon{")"} \\
 & = & f_1 \\
 \end{array}
 $$
@@ -1700,21 +1837,23 @@ The second call, with the identical steps omitted, then follows:
 
 $$
 \begin{array}{rcl}
-f'~[2, 2, 1]~f_1 & = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
-& & \quad \text{token}'(' \\
-& & \quad \text{token}'seq' \\
-& & \quad \expand(i, [2, 2, 1], [f_1], \text{acc}~0) \\
-& & \quad \expand(i, [2, 2, 1], [f_1], [2, *, 1]) \\
-& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
-& = & \text{\mintinline{syncon}{coreseq}}\{ \enspace \text{(} \\
-& & \quad \text{token}'(' \\
-& & \quad \text{token}'seq' \\
-& & \quad f_1 \\
-& & \quad \text{\mintinline{syncon}{sum}}\{\ldots\} \text{ since} \\
-& & \qquad \specialize([2, *, 1], [2, 2, 1])(i) \\
-& & \qquad \quad = [2, 2, 1](i) \\
-& & \qquad \quad = \{\text{\mintinline{syncon}{sum}}\{\ldots\}\} \\
-& & \quad \text{token}')' \enspace \text{)} \enspace \} \\
+f'~[2, 2, 1]~f_1 & = & \syncon{coreseq} :> \\
+& & \quad \seq \\
+& & \qquad \syncon{"("} \\
+& & \qquad \syncon{"seq"} \\
+& & \qquad \expand(i, [2, 1, 1], f_1, \acc~0) \\
+& & \qquad \expand(i, [2, 1, 1], f_1, [2, *, 1]) \\
+& & \qquad \syncon{")"} \\
+& = & \syncon{coreseq} :> \\
+& & \quad \seq \\
+& & \qquad \syncon{"("} \\
+& & \qquad \syncon{"seq"} \\
+& & \qquad f_1 \\
+& & \qquad (\syncon{sum} :> \ldots) \text{ since} \\
+& & \qquad \quad \follow(\specialize([2, *, 1], [2, 2, 1]), i) \\
+& & \qquad \qquad = \follow([2, 2, 1], i) \\
+& & \qquad \qquad = (\syncon{sum} :> \ldots) \\
+& & \qquad \syncon{")"} \\
 \end{array}
 $$
 
@@ -1730,49 +1869,54 @@ Expansion checking extends name resolution to handle special 'placeholder' nodes
 By definition, for a placeholder node $p \in s'$ we have
 
 $$ binders(p) = \{p_e, p_b, p_a\} $$
-$$ E_b(p) = \{(p_e, s', \Gamma(p_e)), (p_b, s', \Gamma(p_b))\} $$
-$$ E_a(p) = \{(p_e, s', \Gamma(p_e)), (p_a, s', \Gamma(p_a))\} $$
+$$ E_b(p) = \{(\sym(p_e), s', \Gamma(p_e)), (\sym(p_b), s', \Gamma(p_b))\} $$
+$$ E_a(p) = \{(\sym(p_e), s', \Gamma(p_e)), (\sym(p_a), s', \Gamma(p_a))\} $$
 
-Additionally we will consider the computed set of bindings in scope (i.e. $\gamma$) for a placeholder node, but without the generated symbols, to be an output of name resolution, which we will refer to as $\gamma_p$.
+where $p_e$, $p_b$, and $p_a$ are unique identifiers with unique symbols. Additionally we will consider the computed set of bindings in scope (i.e. $\gamma$ in the previous section) for a placeholder node $p$, but without the replacement symbols, to be an output of name resolution, which we will refer to as $\gamma_p$.
 
 The idea here is that no actual instance will have greater requirements on its surroundings than a placeholder node, thus if expanding an instance where all children are placeholders introduces no errors, then expanding the same instance but with actual instances should also not introduce errors.
 
-More concretely, given a syntax construction instance $c~i$ where all identifiers have different symbols and all child instances are in fact placeholders, and its expansion $e$, then an error might be introduced if one of the following is true:
+More concretely, given a syntax construction instance $c :> i$ where all identifiers have different symbols and all child instances are in fact placeholders, and its expansion $e = \expand(i, [], \epsilon, e_c)$, then an error might be introduced if one of the following is true:
 
 \begin{enumerate}
-  \item There is a placeholder $p'$ somewhere in $e$, copied from $p$ in $c\{i\}$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
-  \item $E_b(e) \setminus E_b(c\{i\}) \neq \emptyset$ or $E_a(e) \setminus E_a(c\{i\}) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
-  \item Any symbol in a referencing identifier in $e$ that is unbound also appears unbound in a referencing identifier in $c\{i\}$.
+  \item There is a placeholder $p'$ somewhere in $e$, copied from a placeholder $p$ in $c :> i$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
+  \item $E_b(e) \setminus E_b(c :> i) \neq \emptyset$ or $E_a(e) \setminus E_a(c :> i) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
+  \item Any symbol in an identifier in a referencing position in $e$ that is unbound is \emph{bound} in an identifier in a referencing position in $c :> i$.
 \end{enumerate}
 
-The third point warrants further elaboration. The checking procedure examines an instance in isolation, i.e. it is not a sub-tree of some syntax tree. This means that any identifier that appears in a referencing position is unbound, which is an error. However, if the same instance appeared in a syntax tree and that tree had no binding errors, then all those identifiers must be bound in that context. Swapping the instance for its expansion and placing it in the same context then satisfies the same references in the expansion. A new unbound error with a new symbol would not have this guarantee and might thus introduce an error where there were none before.
+The third point warrants further elaboration. The checking procedure examines an instance in isolation, i.e. it is not a subtree of some syntax tree. This means that any identifier that appears in a referencing position is unbound, which is an error. However, if the same instance appeared in a syntax tree and that tree had no binding errors, then all those identifiers must be bound in that context. Replacing the instance with its expansion and placing it in the same context then satisfies the same references in the expansion. A new unbound error with a new symbol would not have this guarantee and might thus introduce an error where there were none before.
 
 Checking the expansion definition of a syntax construction then becomes a matter of generating a representative set of instances with placeholders that cover all possible real instances that could appear in a real syntax tree. In the absence of EBNF operators this is a single instance, since no variation is possible without picking different child instances, but in their presence more care must be taken.
 
-A 'zero or one' repetition ($?$) clearly requires two variations, but the unbounded repetitions ($*$ and $+$) are less clear.
+A 'zero or one' repetition ($\repquestion$) clearly requires two variations, but the unbounded repetitions ($\repstar$ and $\repplus$) are less clear.
 
-A fold over a '$*$' repetition could result in the initial accumulator value only, or one or more iterations of the actual folding template. The folding template can only use the accumulator atomically, so it will essentially wrap it in some other expression, possibly copied in multiple places. It is the hypothesis of this thesis that errors can occur either when fold and initial value interact, or when a fold interacts with a previous fold, and that no such interaction requires multiple folds to appear, because of the limited capabilities of each fold. If this holds true then all possible errors should appear by simply checking 0, 1, and 2 repetitions. Similarly, a '$+$' repetition could be used in a $\mathit{fold1}$ fold which would require 3 repetitions to exhibit two wrapped applications of the fold template.
+A fold over a $\repstar$ repetition could result in the initial accumulator value only, or one or more iterations of the actual folding template. The folding template can only use the accumulator atomically, so it will essentially wrap it in some other expression, possibly copied in multiple places. It is the hypothesis of this thesis that errors can occur either when fold and initial value interact, or when a fold interacts with a previous fold, and that no such interaction requires multiple folds to appear, because of the limited capabilities of each fold. If this holds true then all possible errors should appear by simply checking 0, 1, and 2 repetitions. Similarly, a $\repplus$ repetition could be used in a $\mathit{fold1}$ fold which would require 3 repetitions to exhibit two wrapped applications of the fold template.
 
-The $gen$ function, given below, generates the necessary variations. Note that it is not written as a pure function, the first two cases should generate new unique results every time they are called. Also note that the third case (sequences) and $rep$ should be considered to generate one variation per choice of variation from the sets generated by their children, basically a set cross-product. The nodes of a syntax description that do not interact with name binding can be largely ignored, except that something must be in their place in the instance, otherwise paths would not lead to the correct node in the instance.
+\newcommand{\gen}{\mathit{gen}}
+\newcommand{\genrep}{\mathit{rep}}
+
+% TODO: this is a pretty bad explanation. maybe I can actually use a monad? :(
+
+The $\gen$ function, given below, generates the necessary variations. Note that it is not written as a pure function, the first two cases should generate new unique results every time they are called. Also note that the third case ($\seq$) and $\genrep$ should be considered to generate one variation per choice of variation from the sets generated by their children, basically a set cross-product. The nodes of a syntax description that do not interact with name binding can be largely ignored, except that something must be in their place in the instance (\textbf{dummy} below), otherwise the instance would be malformed, and paths would not be correct.
 
 % TODO: is case three (sequence) clear in what it means? (all possible combinations choosing one from the variations of each item in the sequence) (essentially crossproduct of all the respective sets)
 
 $$
 \begin{array}{rcl}
-gen(\text{'Identifier'}) & = & uniqueId \\
-gen(t) & = & uniquePlaceholder \\
-gen((\overline{syntax})) & = & \{(\overline{gen(syntax_n)})\} \\
-gen(syntax~*) & = & \bigcup_{n=0}^2 rep(syntax, n) \\
-gen(syntax~+) & = & \bigcup_{n=1}^3 rep(syntax, n) \\
-gen(syntax~?) & = & \bigcup_{n=0}^1 rep(syntax, n) \\
-gen(\_) & = & \{\text{some dummy value}\} \\
+\gen(\ident) & = & \mathit{uniqueId} \\
+\gen(\synt{syntax-type}) & = & \mathit{uniquePlaceholder} \\
+\gen(\seq \overline{syntax}) & = & \{\seq \overline{\gen(syntax_n)}\} \\
+\gen(\repstar syntax) & = & \bigcup_{n=0}^2 \genrep(syntax, n) \\
+\gen(\repplus syntax) & = & \bigcup_{n=1}^3 \genrep(syntax, n) \\
+\gen(\repquestion syntax) & = & \bigcup_{n=0}^1 \genrep(syntax, n) \\
+\gen(\_) & = & \{\textbf{dummy}\} \\
 \text{where} & & \\
-rep(syntax, n) & = & \{[gen(syntax)\ldots]\} \\
+\genrep(syntax, n) & = & \{(\repseq \gen(syntax)\ldots)\} \\
 & & \text{(Generate $n$ repetitions of $syntax$)} \\
 \end{array}
 $$
 
-Nested repetitions incur many more variations as we wish to be sure to capture all possible error interactions. For example, two consecutive '$*$' repetitions produce $3 * 3 = 9$ variations, while two nested '$*$' repetitions produce $1 + 3 + 3*3 = 12$ variations.
+Nested repetitions incur many more variations as we wish to be sure to capture all possible error interactions. For example, two consecutive $\repstar$ repetitions produce $3 * 3 = 9$ variations, while two nested $\repstar$ repetitions produce $1 + 3 + 3*3 = 12$ variations.
 
 % TODO: we make no mention here or elsewhere about how to check that the syntax types agree during expansion. Presumably this is easy to do, basically compare to the syntax description and check that repr(type-in-syntax) = repr(type-in-instance) for every expansion in the expansion checking phase
 
