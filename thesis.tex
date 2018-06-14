@@ -45,9 +45,21 @@ frame=single
 \titlepage
 
 \begin{abstract}
-This thesis introduces syntax constructions as a method of constructing programming languages as a set of language features, permitting reuse through cherry-picking single features from other languages. They are similar to macros, but with greater syntactical freedom than those found in most languages (e.g. Lisp), and extra annotations specifying their binding semantics. These annotations are then used to allow full name resolution before macro-expansion, along with a check to ensure that no syntax construction can introduce a new binding error trough its expansion. This means that error messages pertaining to name binding are presented in terms of code the programmer actually wrote, instead of code generated through several layers of macro-expansions.
+The task of implementing a programming language is a task that entails a great deal of work. Yet much of this work is similar for different programming languages: most languages require e.g. parsing, name resolution, type-checking and optimization. When implementing domain-specific languages (DSLs) we would wish to not have to re-implement all of these largely similar tasks for every language.
 
-Syntax constructions also use syntactical ambiguity as a feature through informative error messages, but the tools provided to control the ambiguity and where it appears prove insufficient. Ultimately syntax constructions represent a step towards a certain user experience in creating new programming languages, but are themselves not the desired solution.
+A number of approaches exist to alleviate this issue, a few examples include: embedded DSLs, macro-rewriting systems, and more general systems intended for language implementation. However, these tend to have at least one of the following characteristics:
+
+\begin{itemize}
+  \item They present a leaky abstraction, e.g., error messages do not refer to the DSL but rather some other programming language, namely the one used to implement the DSL.
+  \item They limit the flexibility of the DSL, either to the constructs present in another language, or merely to the syntax of some other language.
+  \item They see an entire language as the unit of composition. Complete languages are extended with other complete language extensions.
+\end{itemize}
+
+Instead, this thesis introduces syntax constructions, which represent a smaller unit of composition. A syntax construction defines a single language feature, e.g., an if-statement, an anonymous function, or addition. Each syntax construction specifies its own syntax, binding semantics, and runtime semantics, independent of the rest of the language. The runtime semantics are defined using a translation into some other language, similarly to macros. These translations can then be checked to ensure that they preserve binding semantics and introduce no binding errors. This ensures that binding errors can be presented in terms of code the programmer wrote, rather than generated code in some underlying language.
+
+\enlargethispage{\baselineskip}
+
+During evaluation several limitations are encountered. Removing, or minimizing, these limitations appears possible, but is left for future work.
 \end{abstract}
 
 
@@ -68,14 +80,34 @@ Syntax-konstruktioner låter en användare skapa syntaktisk ambiguitet i sitt pr
 
 \chapter{Introduction} \label{sec:introduction}
 
+A domain-specific programming language (DSL) is a programming language created to solve problems in some particular domain. There are numerous methods for creating such languages. A few examples include:
+
+\begin{description}
+  \item[Embedded DSLs] An embedded DSL is a language designed as a library in a host programming language. They use the already existing capabilities of the host language, e.g., name binding, type systems, and other libraries. Some examples include Paradise \cite{Augustsson2008Paradise:-A-Two}, RSpec\footnote{http://rspec.info/}, and Rake\footnote{https://ruby.github.io/rake/}.
+
+  However, embedding a DSL limits it to the capabilities of the host language. Additionally, any type errors produced on incorrect usage may refer to concepts in the host language, rather than the DSL.
+
+  \item[External DSLs] An external DSL on the other hand is implemented from the ground up, it is not part of a host language. Examples include CSS, SQL, and DOT\footnote{http://graphviz.org/}.
+
+  While these DSLs are not limited by some host language, they also have no host language to take advantage of. Any capabilities that might have been provided by a host language must instead be re-implemented.
+
+  \item[Macros] Macros, commonly featured in Lisp dialects, are syntax transformations that run at compile-time. From a practical stand point they allow a programmer to extend a language with new constructs that appear as though they are built in to the language, but are in fact implemented by some translation to the underlying language. They can be used to implement an embedded DSL.
+
+  This gives greater freedom than most other forms of embedded DSLs, but error messages are still likely to refer to the host language, and the syntax is still constrained to that of the host language; a Lisp macro still looks like Lisp.
+
+  \item[Language-definition languages] This category is somewhat looser defined than the others, but refers to systems whose (primary or secondary) purpose is the construction of programming languages. Some examples include SoundX \cite{Lorenzen2016Sound-type-depe}, Silver \cite{Van-Wyk2010Silver:-An-exte}, and Racket \cite{Tobin-Hochstadt:2011:LL:1993498.1993514}.
+
+  The trade-offs vary by system, but they all tend to consider a language as the base building block when we want to reuse or extend a language: extend a full language with a full language extension.
+\end{description}
+
 % discuss embedded DSL, external DSL, costs, weaknesses, probably reusability (?)
 % probably start from general-purpose vs domain-specific
 
-This thesis takes a different approach: syntax constructions center around singular language constructs, such as if-statements, anonymous functions, or patterns used in pattern matching. The language designer defines a syntax construction representing one of these, describing its syntax, its binding semantics, and its runtime semantics. The runtime semantics are specified in terms of a translation to another programming language, and this translation is checked to ensure that it always preserves the binding semantics.
+This thesis falls under the language-definition language category, but takes a different approach. We introduce syntax constructions, which center around singular language constructs. A syntax construction could for example implement an if-statement, an anonymous function, or a pattern used in pattern matching. Each syntax construction describes its own syntax, its binding semantics, and its runtime semantics, independent of other parts of the language. The runtime semantics are specified in terms of a translation to another programming language, and this translation is checked to ensure that it always preserves the binding semantics.
 
-This enables creating new programming languages by cherry-picking individual features from previous languages, i.e., it enables reuse of a single language feature as opposed to an entire language. The unit of composition is a feature, not a language.
+An alternative angle is to consider syntax constructions as macros with some extra features: greater syntactical flexibility and the ability to reason about name bindings without macro expansion. This means that binding errors do \emph{not} refer to the host language.
 
-For a reader familiar with macros, syntax constructions extend macros with greater syntactical flexibility and the ability to reason about bindings without macro expansion (for the reader not familiar with macros, they are explained in Section~\ref{sec:introduction-macros}).
+The self-contained nature of a syntax construction enables creating new programming languages by cherry-picking individual features from previous languages, i.e., it enables reuse of a single language feature as opposed to an entire language. The unit of composition is a feature, not a language.
 
 The remainder of this introduction will provide additional context and motivation for the thesis and the associated approach (Sections \ref{sec:compiler-design} through \ref{sec:desired-ambiguity}), a more precise problem statement (Section~\ref{sec:research-question}), and a list of contributions (Section~\ref{sec:contributions}).
 
@@ -333,7 +365,7 @@ The functions \mintinline{haskell}{even} and \mintinline{haskell}{odd} are avail
 
 In addition, $\lambda_m$ introduces definitions of $\alpha$-equivalence and hygiene that do not depend on macro expansion and places focus on allowing reasoning about unexpanded programs, both of which are also present in this thesis.
 
-Romeo \cite{Stansifer2014Romeo} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$.
+Romeo \cite{Stansifer2014Romeo} continue the path of typed macros but extends it to allow procedural macros, as opposed to the pattern matching and replacing of $\lambda_m$. However, like $\lambda_m$, Romeo focuses on nested bindings.
 
 \section{Syntax Solutions} \label{sec:syntax-solutions}
 
@@ -842,7 +874,7 @@ As mentioned previously, expansion checking can be run entirely independently of
 
 \section{Running Example}
 
-The remainder of this chapter will feature a running example: a programming language (defined in Listing~\ref{lst:formal-language}) and some source code in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. This section will explain the example in greater detail.
+The remainder of this chapter will feature a running example: a programming language (defined in Listing~\ref{lst:formal-language}) and a small source code example in that language (Listing~\ref{lst:formal-file}). The reader may wish to bookmark these listings, as this chapter is fairly long and they will be referred to throughout. This section will explain the example in greater detail.
 
 \afterpage{
 \clearpage
@@ -876,7 +908,7 @@ The remainder of Listing~\ref{lst:formal-language} defines the six syntax constr
   \end{itemize}
 \end{description}
 
-The beginning of line 13, \syncon{Core`}, specifies that what follows should be parsed as a syntax construction of syntax type \syncon{Core}. Had it instead said \syncon{Expression`} then the remainder of the body would have been parsed as a syntax construction of syntax type \syncon{Expression}. Both would be valid when considering the syntax type of the expansion, as it only needs to be representationally equal to \syncon{Expression}. In general, parsing uses nominal syntax types while expansion uses representational syntax types.
+The beginning of line 13, \syncon{Core`}, specifies that what follows should be parsed as a syntax construction of syntax type \syncon{Core}. Had it instead said \syncon{Expression`} then the remainder of the body would have been parsed as a syntax construction of syntax type \syncon{Expression}. Both would be valid when considering the syntax type of the expansion, as it only needs to be representationally equal to \syncon{Expression}. In general, parsing uses nominal syntax types while expansion uses representational syntax types. These serve as parallels to nominal and structural type systems, where the former treats differently named types as different types, while the latter treats all types with the same structure as the same type.
 
 The remainder of line 13 is an expression in the core language, a call to the function \syncon{add} with two arguments: \syncon{`t(a)} and \syncon{`t(b)}. These arguments represent the \syncon{Expression}s \syncon{a} and \syncon{b} from the syntax description. The ''\syncon{t}'' in \syncon{`t(a)} means that we are using a syntax construction \syncon{a}, while \syncon{`int(i)} (e.g. in \syncon{lit} on line 7) instead means that we are using an integer from the syntax description. This extra syntax for using elements from the syntax description in the expansion template is due to a limitation in the parser, and is discussed in more detail in the previous chapter, in Section~\ref{sec:disambiguation-implementation}.
 
@@ -965,10 +997,11 @@ We will now define an instance of syntax construction. These are technically not
 When the parser determines that some source code should be parsed as a syntax construction $c$ we create an instance of it, which is defined by the following grammar:
 
 \newcommand{\repseq}{\mathrel{\mathbf{rep}}}
+\newcommand{\tagged}{\mathrel{\textbf{:>}}}
 
 \setlength{\grammarindent}{6.5em}
 \begin{grammar}
-<instance> ::= $c :>$ <inner>
+<instance> ::= $c \tagged$ <inner>
 
 <inner> ::= <token>
   \alt <instance>
@@ -976,7 +1009,7 @@ When the parser determines that some source code should be parsed as a syntax co
   \alt $\repseq$ $\overline{\synt{inner}}$
 \end{grammar}
 
-The alternatives of \synt{inner} each represent, in order:
+An instance will thus always have the form $c \tagged i$, which means that $i$ is an instance of the syntax construction $c$. The alternatives of \synt{inner} each represent, in order:
 \begin{itemize}
   \item A single token, parsed from one of the first five alternatives in \synt{syntax}.
   \item An instance, parsed from a \synt{syntax-type}.
@@ -988,17 +1021,17 @@ For example, the \mintinline{syncon}{block} on lines 2 through 5 of Listing~\ref
 
 $$
 \begin{array}{l}
-\syncon{block} :> \\
+\syncon{block} \tagged \\
 \quad \seq \syncon|"{"|\\
-\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} :> \ldots)\ \syncon{";"}) \\
-\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{lit} :> \ldots)\ \syncon{";"})) \\
+\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} \tagged \ldots)\ \syncon{";"}) \\
+\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{lit} \tagged \ldots)\ \syncon{";"})) \\
 \quad \hphantom{\seq }\ \syncon|"}"| \\
 \end{array}
 $$
 
-where $\syncon{def} :> \ldots$ is the instance of the \mintinline{syncon}{def} on line~3, and $\syncon{lit} :> \ldots$ is the instance of the \syncon{lit} on line~4.
+where $\syncon{def} \tagged \ldots$ is the instance of the \mintinline{syncon}{def} on line~3, and $\syncon{lit} \tagged \ldots$ is the instance of the \syncon{lit} on line~4.
 
-As a parallel to the leaves of a syntax construction, we define the leaves of an instance to be the \synt{token}s and \synt{instance}s that are reachable without passing through some other \synt{instance}. The leaves of the \syncon{block} instance above are the curly braces, the semi-colons, the $\syncon{def} :> \ldots$, and the $\syncon{lit} :> \ldots$.
+As a parallel to the leaves of a syntax construction, we define the leaves of an instance to be the \synt{token}s and \synt{instance}s that are reachable without passing through some other \synt{instance}. The leaves of the \syncon{block} instance above are the curly braces, the semi-colons, the $\syncon{def} \tagged \ldots$, and the $\syncon{lit} \tagged \ldots$.
 
 \newcommand{\leaves}{\ensuremath{\mathit{leaves}}}
 
@@ -1007,9 +1040,9 @@ More concretely, we compute the set of leaves of an instance using \leaves:
 \newcommand{\children}{\ensuremath{\mathit{children}}}
 $$
 \begin{array}{rcl}
-\leaves(c :> i) & = & \children(i) \\
+\leaves(c \tagged i) & = & \children(i) \\
 \children(\synt{token}) & = & \{\synt{token}\} \\
-\children(c :> i) & = & \{c :> i\} \\
+\children(c \tagged i) & = & \{c \tagged i\} \\
 \children(\seq \overline{i}) & = & \bigcup_n \children(i_n) \\
 \children(\repseq \overline{i}) & = & \bigcup_n \children(i_n) \\
 \end{array}
@@ -1065,13 +1098,13 @@ Below are a few examples of names from Listing~\ref{lst:formal-language} transla
 
   $\follow([2], s)$, where $s$ is the syntax description of \syncon{def}, yields $\ident$.
 
-  $\follow([2], i)$, where $\syncon{def} :> i$ is the \syncon{def} instance on line~2 of Listing~\ref{lst:formal-file}, yields $\{\syncon{"a"}\}$.
+  $\follow([2], i)$, where $\syncon{def} \tagged i$ is the \syncon{def} instance on line~2 of Listing~\ref{lst:formal-file}, yields $\{\syncon{"a"}\}$.
 
   \item Line 23, \syncon{block}: The name \syncon{es} becomes the path $[2, *, 1]$.
 
   $\follow([2, *, 1], s)$, where $s$ is the syntax description of \syncon{block}, yields $(\syncon{Expression}\ \syncon{Core})$.
 
-  $\follow([2, *, 1], i)$, where $i$ is the \syncon{block} instance on lines~2-5, yields $\{(\syncon{def} :> \ldots), (\syncon{lit} :> \ldots)\}$.
+  $\follow([2, *, 1], i)$, where $i$ is the \syncon{block} instance on lines~2-5, yields $\{(\syncon{def} \tagged \ldots), (\syncon{lit} \tagged \ldots)\}$.
 \end{itemize}
 
 \subsubsection{Scope}
@@ -1119,7 +1152,7 @@ An expansion template $e_c$ is given by the following grammar:
 <expansion> ::= $p$
   \alt $\acc n$
   \alt $\foldl p$ <expansion> <expansion>
-  \alt $c :> \synt{expansion-inner}$
+  \alt $c \tagged \synt{expansion-inner}$
 
 <expansion-inner> ::= <token>
   \alt <expansion>
@@ -1134,8 +1167,8 @@ The \mintinline{syncon}{block} syntax construction in Listing~\ref{lst:formal-la
 $$
 \begin{array}{l}
 \foldl [2, *, 1] \\
-\quad \syncon{coreseq} :> (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
-\quad \syncon{corelit} :> (\seq \syncon{"0"}) \\
+\quad \syncon{coreseq} \tagged (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
+\quad \syncon{corelit} \tagged (\seq \syncon{"0"}) \\
 \end{array}
 $$
 
@@ -1317,25 +1350,25 @@ Parsing this code using the running example language (Listing~\ref{lst:formal-la
 $$
 \begin{array}{l|l}
 \begin{array}{l}
-\syncon{top} :> (\seq \\
-\quad \syncon{sum} :> (\seq \\
-\qquad (\syncon{sum} :> \\
-\qquad \quad \seq (\syncon{lit} :>\ \seq \syncon{"1"}) \\
+\syncon{top} \tagged (\seq \\
+\quad \syncon{sum} \tagged (\seq \\
+\qquad (\syncon{sum} \tagged \\
+\qquad \quad \seq (\syncon{lit} \tagged\ \seq \syncon{"1"}) \\
 \qquad \quad \hphantom{\seq}\ \syncon{"+"} \\
-\qquad \quad \hphantom{\seq}\ (\syncon{lit} :>\ \seq \syncon{"2"})) \\
+\qquad \quad \hphantom{\seq}\ (\syncon{lit} \tagged\ \seq \syncon{"2"})) \\
 \qquad \syncon{"+"} \\
-\qquad (\syncon{lit} :>\ \seq \syncon{"3"}))) \\
+\qquad (\syncon{lit} \tagged\ \seq \syncon{"3"}))) \\
 \end{array}
 &
 \begin{array}{l}
-\syncon{top} :> (\seq \\
-\quad \syncon{sum} :> (\seq \\
+\syncon{top} \tagged (\seq \\
+\quad \syncon{sum} \tagged (\seq \\
 \qquad \syncon{"+"} \\
-\qquad (\syncon{lit} :>\ \seq \syncon{"1"}) \\
-\qquad (\syncon{sum} :> \\
-\qquad \quad \seq (\syncon{lit} :>\ \seq \syncon{"2"}) \\
+\qquad (\syncon{lit} \tagged\ \seq \syncon{"1"}) \\
+\qquad (\syncon{sum} \tagged \\
+\qquad \quad \seq (\syncon{lit} \tagged\ \seq \syncon{"2"}) \\
 \qquad \quad \hphantom{\seq}\ \syncon{"+"} \\
-\qquad \quad \hphantom{\seq}\ (\syncon{lit} :>\ \seq \syncon{"3"})))) \\
+\qquad \quad \hphantom{\seq}\ (\syncon{lit} \tagged\ \seq \syncon{"3"})))) \\
 \end{array}
 \end{array}
 $$
@@ -1384,25 +1417,25 @@ As an example, consider our running example, but once again with associativity r
 
 $$
 \begin{array}{rcl}
-\syncon{top} :> (\seq \ldots)
+\syncon{top} \tagged (\seq \ldots)
 & =_s &
-\syncon{top} :> (\seq \ldots) \\
+\syncon{top} \tagged (\seq \ldots) \\
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-\seq (\syncon{block} :> \ldots)
+\seq (\syncon{block} \tagged \ldots)
 & =_s &
-\seq (\syncon{block} :> \ldots) \\
+\seq (\syncon{block} \tagged \ldots) \\
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-\syncon{block} :> (\seq \ldots)
+\syncon{block} \tagged (\seq \ldots)
 & =_s &
-\syncon{block} :> (\seq \ldots) \\
+\syncon{block} \tagged (\seq \ldots) \\
 \end{array}
 $$
 
@@ -1428,13 +1461,13 @@ $$
 
 $$
 \begin{array}{rcl}
-\seq (\syncon{def} :> \ldots)\ \syncon{";"}
+\seq (\syncon{def} \tagged \ldots)\ \syncon{";"}
 & =_s &
-\seq (\syncon{def} :> \ldots)\ \syncon{";"} \\
+\seq (\syncon{def} \tagged \ldots)\ \syncon{";"} \\
 
-\seq (\syncon{sum} :> \ldots)\ \syncon{";"}
+\seq (\syncon{sum} \tagged \ldots)\ \syncon{";"}
 & =_s &
-\seq (\syncon{sum} :> \ldots)\ \syncon{";"} \\
+\seq (\syncon{sum} \tagged \ldots)\ \syncon{";"} \\
 \end{array}
 $$
 
@@ -1442,9 +1475,9 @@ Under normal circumstances we would now have to descend into both children (i.e.
 
 $$
 \begin{array}{rcl}
-\syncon{sum} :> (\seq \ldots)
+\syncon{sum} \tagged (\seq \ldots)
 & =_s &
-\syncon{sum} :> (\seq \ldots) \\
+\syncon{sum} \tagged (\seq \ldots) \\
 
 \syncon{";"} & =_s & \syncon{";"} \\
 \end{array}
@@ -1452,9 +1485,9 @@ $$
 
 $$
 \begin{array}{rcl}
-\seq (\syncon{sum} :> \ldots)\ \syncon{"+"}\ (\syncon{lit} :> \ldots)
+\seq (\syncon{sum} \tagged \ldots)\ \syncon{"+"}\ (\syncon{lit} \tagged \ldots)
 & =_s &
-\seq (\syncon{var} :> \ldots)\ \syncon{"+"}\ (\syncon{sum} :> \ldots)
+\seq (\syncon{var} \tagged \ldots)\ \syncon{"+"}\ (\syncon{sum} \tagged \ldots)
 \end{array}
 $$
 
@@ -1462,15 +1495,15 @@ This is the first point where we see any inequality, but the two instances are s
 
 $$
 \begin{array}{rcl}
-\syncon{sum} :> (\seq \ldots)
+\syncon{sum} \tagged (\seq \ldots)
 & \not=_s &
-\syncon{var} :> (\seq \ldots) \\
+\syncon{var} \tagged (\seq \ldots) \\
 
 \syncon{"+"} & \not=_s & \syncon{"+"} \\
 
-\syncon{lit} :> (\seq \ldots)
+\syncon{lit} \tagged (\seq \ldots)
 & \not=_s &
-\syncon{sum} :> (\seq \ldots) \\
+\syncon{sum} \tagged (\seq \ldots) \\
 \end{array}
 $$
 
@@ -1498,7 +1531,7 @@ We justify the notation by noting that given two paths $p_1$ and $p_2$ that belo
 $$
 \begin{array}{rcl}
 p_1 \subseteq p_2 & -> & \follow(p_1, s) = \follow(p_2, s) \\
-p_1 \subseteq p_2 & -> & \forall (c :> i).\ \follow(p_1, i) \subseteq \follow(p_2, i) \\
+p_1 \subseteq p_2 & -> & \forall (c \tagged i).\ \follow(p_1, i) \subseteq \follow(p_2, i) \\
 \end{array}
 $$
 
@@ -1529,7 +1562,7 @@ For example, $\specialize([2, *, 2, *], [2, 1, 1, 1]) = [2, 1, 2, *]$.
 
 \newcommand{\rooti}{\ensuremath{\mathit{root}}}
 
-Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as \rooti, and will by construction have the shape $c :> i$ (i.e., it is an instance of some syntax construction $c$).
+Name resolution is a structure and binding preserving transformation that replaces each symbol in an abstract syntax tree with newly generated ones so as to ensure that each symbol is only bound once across the entire tree. The root of the tree will be referred to as \rooti, and will by construction have the shape $c \tagged i$ (i.e., it is an instance of some syntax construction $c$).
 
 We assume that each node is unique and distinct from all other nodes in the tree, and in particular that it can be used as the key in a mapping. This could, for example, be accomplished by attaching a unique number to each node across the tree. Furthermore, we can attach an ordering between two nodes if neither is a descendant of the other. A node $a$ is before another node $b$ if it appears earlier in the tree, in which case we will write $a < b$.
 
@@ -1555,25 +1588,25 @@ First, we wish to find all the identifiers that are in a binding position:
 
 $$
 \begin{array}{rcl}
-\binders(c :> i) & = & i_b \cup i_a \cup i_i \cup i_c \\
+\binders(c \tagged i) & = & i_b \cup i_a \cup i_i \cup i_c \\
 \text{where} & & \\
 i_b & = & \{ \follow(p, i) \mid p \in B_b \text{ of } c\} \\
 i_a & = & \{ \follow(p, i) \mid p \in B_a \text{ of } c\} \\
 i_i & = & \{ \follow(p, i) \mid (p, \_) \in B_i \text{ of } c\} \\
-i_c & = & \bigcup_{(c' :> i') \in \leaves(c :> i)} \binders(c' :> i') \\
+i_c & = & \bigcup_{(c' \tagged i') \in \leaves(c \tagged i)} \binders(c' \tagged i') \\
 \end{array}
 $$
 
-For example, using the instance for the innermost \mintinline{syncon}{block} (writing it as $\syncon{block} :> i$) in Listing~\ref{lst:formal-file}:
+For example, using the instance for the innermost \mintinline{syncon}{block} (writing it as $\syncon{block} \tagged i$) in Listing~\ref{lst:formal-file}:
 
 $$
 \begin{array}{rcl}
-\binders(\syncon{block} :> i) & = & i_b \cup i_a \cup i_i \cup i_c = \{\syncon{"a"}\}\\
+\binders(\syncon{block} \tagged i) & = & i_b \cup i_a \cup i_i \cup i_c = \{\syncon{"a"}\}\\
 \text{where} & & \\
 i_b & = & \{ \follow(p, i) \mid p \in \emptyset \} = \emptyset \\
 i_a & = & \{ \follow(p, i) \mid p \in \emptyset \} = \emptyset \\
 i_i & = & \{ \follow(p, i) \mid (p, \_) \in \emptyset \} = \emptyset \\
-i_c & = & \binders(\syncon{def} :> \ldots) = \{\syncon{"a"}\} \\
+i_c & = & \binders(\syncon{def} \tagged \ldots) = \{\syncon{"a"}\} \\
 \end{array}
 $$
 
@@ -1605,30 +1638,30 @@ $$ \rooti \in\ \rootscope $$
 
 \newcommand{\instantiate}{\ensuremath{\mathit{instantiate}}}
 
-Given a scope $s$ and a path $p$ to a leaf, both belonging to an instance $c :> i$, the scope instance of $s$ is given by $\instantiate(c :> i, p, s)$:
+Given a scope $s$ and a path $p$ to a leaf, both belonging to an instance $c \tagged i$, the scope instance of $s$ is given by $\instantiate(c \tagged i, p, s)$:
 
 $$
 \begin{array}{rcl}
-\instantiate(c :> i, p, \near) & = & s' \text{ where } c :> i \in s' \\
-\instantiate(c :> i, p, \text{(}rep, P, s\text{)}) & = & \text{(}P', parent\text{)} \\
-\instantiate(c :> i, p, \scope r\ P\ s) & = & \scopeinst P'\ s' \\
+\instantiate(c \tagged i, p, \near) & = & s' \text{ where } c \tagged i \in s' \\
+\instantiate(c \tagged i, p, \text{(}rep, P, s\text{)}) & = & \text{(}P', parent\text{)} \\
+\instantiate(c \tagged i, p, \scope r\ P\ s) & = & \scopeinst P'\ s' \\
 \text{where} & & \\
 r' & = & \specialize(r, p) \\
 P' & = & \{\specialize(p', r') \mid p' \in P\} \\
-s' & = & \instantiate(c :> i, p, s) \\
+s' & = & \instantiate(c \tagged i, p, s) \\
 \end{array}
 $$
 
-We are now ready to determine the scope instance any non-root leaf belongs to. Given a leaf $i$, that is a leaf of $c :> i'$, find the scope $s$ in $c$ that covers $i$, then instantiate it:
+We are now ready to determine the scope instance any non-root leaf belongs to. Given a leaf $i$, that is a leaf of $c \tagged i'$, find the scope $s$ in $c$ that covers $i$, then instantiate it:
 
 $$
 \inference{
-  i \in \leaves(c :> i') &
+  i \in \leaves(c \tagged i') &
   follow(p, i') = \{i\} &
   p \subseteq p' \\
   p' \in \cover(s) &
   s \in scopes \text{ of } c
-}{i \in \instantiate(c :> i', p, s)}
+}{i \in \instantiate(c \tagged i', p, s)}
 $$
 
 We can now start considering actual bindings. For each node we will compute a set of available bound symbols. Each binding is represented by a 3-tuple consisting of a symbol, a scope instance, and a generated symbol. The first two components denote that the symbol definition is in the given scope instance, while the last component is the generated replacement symbol from $\Gamma$ above.
@@ -1652,41 +1685,41 @@ At this point we have our definitions for binding errors: an unbound symbol prod
 
 The latter error has some subtleties. We could defer the error until $\lookup$ would find multiple choices, i.e. make it an error to have an ambiguous reference instead of making it an error to redefine a symbol, but the latter tends to be a programming error even if it does not lead to any ambiguity.
 
-The exported \syncon{before} and \syncon{after} bindings of an instance $(c :> i) \in s'$, written as $E_b(c :> i)$ and $E_a(c :> i)$ respectively, are given by:
+The exported \syncon{before} and \syncon{after} bindings of an instance $(c \tagged i) \in s'$, written as $E_b(c \tagged i)$ and $E_a(c \tagged i)$ respectively, are given by:
 
 $$
 \begin{array}{rcl}
-E_b(c :> i) & = & \mathit{immediate} \cup \mathit{transitive} \\
+E_b(c \tagged i) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-\mathit{transitive} & = & \bigcup_{(c' :> i') \in \leaves(c :> i), (c' :> i') \in s'} E_b(c' :> i') \\
+\mathit{transitive} & = & \bigcup_{(c' \tagged i') \in \leaves(c \tagged i), (c' \tagged i') \in s'} E_b(c' \tagged i') \\
 \mathit{immediate} & = & \bigcup_{p \in B_b} \{(\sym(\follow(p, i)), s', \Gamma(\follow(p, i)))\}
 \end{array}
 $$
 
 $$
 \begin{array}{rcl}
-E_a(c :> i) & = & \mathit{immediate} \cup \mathit{transitive} \\
+E_a(c \tagged i) & = & \mathit{immediate} \cup \mathit{transitive} \\
 \text{where} & & \\
-\mathit{transitive} & = & \bigcup_{(c' :> i') \in \leaves(c :> i), (c' :> i') \in s'} E_a(c' :> i') \\
+\mathit{transitive} & = & \bigcup_{(c' \tagged i') \in \leaves(c \tagged i), (c' \tagged i') \in s'} E_a(c' \tagged i') \\
 \mathit{immediate} & = & \bigcup_{p \in B_a} \{(\sym(\follow(p, i)), s', \Gamma(\follow(p, i)))\}
 \end{array}
 $$
 
-Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in \leaves(c :> i')$ where $follow(p, i') = \{i\}$, is given by $E_n(i)$:
+Bindings can also be defined in a nested manner, via $B_i$. The bindings visible in a node $i \in \leaves(c \tagged i')$ where $follow(p, i') = \{i\}$, is given by $E_n(i)$:
 
 $$
 \begin{array}{rcl}
 E_n(\rooti) & = & \emptyset \\
-E_n(i) & = & E_n(c :> i'\})\ \cup \\
+E_n(i) & = & E_n(c \tagged i'\})\ \cup \\
 & & \{ symbol(\follow(p, i')) \mid (p, P) \in B_i \land \exists p' \in P.\ p \subseteq p'\} \\
 \end{array}
 $$
 
 Note the difference between $E_a(i)$, $E_b(i)$, and $E_n(i)$: the former two give the set of bindings \emph{exported} by $i$, while the latter gives the set of bindings \emph{usable} in $i$.
 
-% TODO: MARK: I've gotten this far in the formalization "rewrite", everything beyond this point has only been update to be consistent in syntax (i.e. c~i vs c\{i\} vs (c :> i))
+% TODO: MARK: I've gotten this far in the formalization "rewrite", everything beyond this point has only been update to be consistent in syntax (i.e. c~i vs c\{i\} vs (c \tagged i))
 
-With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from $\ident$ (as opposed to a token literal) with a newly generated symbol. Given an identifier $id \in \leaves(c :> i)$ with scope $id \in s'$, $\follow(p, i) = \{id\}$, and $syntax$ being the syntax description of $c$, we will only perform the below substitution if $\follow(p, syntax) =\ \ident$.
+With all this setup, name resolution is a matter of replacing the symbol in each identifier that was parsed from $\ident$ (as opposed to a token literal) with a newly generated symbol. Given an identifier $id \in \leaves(c \tagged i)$ with scope $id \in s'$, $\follow(p, i) = \{id\}$, and $syntax$ being the syntax description of $c$, we will only perform the below substitution if $\follow(p, syntax) =\ \ident$.
 
 $$
 \begin{array}{rcl}
@@ -1697,8 +1730,8 @@ $$
 \end{cases} \\
 \text{where} & & \\
 \gamma & = & a \cup b \cup E_n(id) \\
-a & = & \bigcup_{(c' :> i') \in s'' \land s' ->* s'' \land (c' :> i') < id} E_a(c' :> i') \\
-b & = & \bigcup_{(c' :> i') \in s'' \land s' ->* s'' \land (c' :> i') > id} E_b(c' :> i') \\
+a & = & \bigcup_{(c' \tagged i') \in s'' \land s' ->* s'' \land (c' \tagged i') < id} E_a(c' \tagged i') \\
+b & = & \bigcup_{(c' \tagged i') \in s'' \land s' ->* s'' \land (c' \tagged i') > id} E_b(c' \tagged i') \\
 \end{array}
 $$
 
@@ -1725,15 +1758,15 @@ As an example, consider the outermost \mintinline{syncon}{block} instance (cover
 
 $$
 \begin{array}{l}
-\syncon{block} :> \\
+\syncon{block} \tagged \\
 \quad \seq \syncon|"{"|\\
-\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} :> \ldots)\ \syncon{";"}) \\
-\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{sum} :> \ldots)\ \syncon{";"})) \\
+\quad \hphantom{\seq}\ (\repseq (\seq (\syncon{def} \tagged \ldots)\ \syncon{";"}) \\
+\quad \hphantom{\seq (\repseq}\ (\seq (\syncon{sum} \tagged \ldots)\ \syncon{";"})) \\
 \quad \hphantom{\seq }\ \syncon|"}"| \\
 \end{array}
 $$
 
-As such $\specs([2, *, 1], \syncon{block} :> \ldots) = [[2, 1, 1] [2, 2, 1]]$.
+As such $\specs([2, *, 1], \syncon{block} \tagged \ldots) = [[2, 1, 1] [2, 2, 1]]$.
 
 \newcommand{\expand}{\ensuremath{\mathit{expand}}}
 
@@ -1743,7 +1776,7 @@ $$
 \begin{array}{rcl}
 \expand(i, p, \overline{acc}, p') & = & i' \text{ where } \follow(\specialize(p', p), i) = \{i'\} \\
 \expand(i, p, \overline{acc}, \acc~n) & = & acc_n \\
-\expand(i, p, \overline{acc}, c :> i') & = & c :> \expand(i, p, \overline{acc}, i') \\
+\expand(i, p, \overline{acc}, c \tagged i') & = & c \tagged \expand(i, p, \overline{acc}, i') \\
 \expand(i, p, \overline{acc}, \synt{token}) & = & \synt{token} \\
 \expand(i, p, \overline{acc}, \seq \overline{i'} ) & = & \seq \overline{\expand(i, p, \overline{acc}, i'_n)} \\
 \expand(i, p, \overline{acc}, \repseq \overline{i'}) & = & \repseq \overline{\expand(i, p, \overline{acc}, i'_n)} \\
@@ -1771,8 +1804,8 @@ As an example, \syncon{block} has the following expansion template:
 $$
 \begin{array}{l}
 \foldl [2, *, 1] \\
-\quad \syncon{coreseq} :> (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
-\quad \syncon{corelit} :> (\seq \syncon{"0"}) \\
+\quad \syncon{coreseq} \tagged (\seq \syncon{"("}\ \syncon{"seq"}\ (\acc 0)\ [2, *, 1]\ \syncon{")"}) \\
+\quad \syncon{corelit} \tagged (\seq \syncon{"0"}) \\
 \end{array}
 $$
 
@@ -1780,18 +1813,18 @@ Expanding the instance given above proceeds as follows, using $i$ to refer to th
 
 $$
 \begin{array}{l}
-\expand(i, [], \epsilon, \foldl~[2, *, 1]~(\syncon{coreseq} :> \ldots)~(\syncon{corelit} :> \ldots)) \\
+\expand(i, [], \epsilon, \foldl~[2, *, 1]~(\syncon{coreseq} \tagged \ldots)~(\syncon{corelit} \tagged \ldots)) \\
 \qquad = \mathit{foldl}(f', f_0, P) \\
 \end{array}
 $$
 where
 $$
 \begin{array}{rcl}
-f' & = & \lambda p'~acc'.~ \expand(i, p', [acc'], \syncon{corelit} :> \ldots) \\
-f_0 & = & \expand(i, [], \epsilon, \syncon{corelit} :> (\seq \syncon{"0"}) \\
-& = & \syncon{corelit} :> \expand(i, [], \epsilon, \seq \syncon{"0"}) \\
-& = & \syncon{corelit} :> (\seq \expand(i, [], \epsilon, \syncon{"0"})) \\
-& = & \syncon{corelit} :> (\seq \syncon{"0"}) \\
+f' & = & \lambda p'~acc'.~ \expand(i, p', [acc'], \syncon{corelit} \tagged \ldots) \\
+f_0 & = & \expand(i, [], \epsilon, \syncon{corelit} \tagged (\seq \syncon{"0"}) \\
+& = & \syncon{corelit} \tagged \expand(i, [], \epsilon, \seq \syncon{"0"}) \\
+& = & \syncon{corelit} \tagged (\seq \expand(i, [], \epsilon, \syncon{"0"})) \\
+& = & \syncon{corelit} \tagged (\seq \syncon{"0"}) \\
 P & = & \specs(\specialize([2, *, 1], []), i) \\
 & = & \specs([2, *, 1], i) \\
 & = & [[2, 1, 1], [2, 2, 1]] \\
@@ -1804,30 +1837,30 @@ The first $f'$ call proceeds as follows:
 
 $$
 \begin{array}{rcl}
-f'~[2, 1, 1]~f_0 & = & \expand(i, [2, 1, 1], f_0, \syncon{coreseq} :> (\seq \ldots)) \\
-& = & \syncon{coreseq} :> \\
+f'~[2, 1, 1]~f_0 & = & \expand(i, [2, 1, 1], f_0, \syncon{coreseq} \tagged (\seq \ldots)) \\
+& = & \syncon{coreseq} \tagged \\
 & & \quad \expand(i, [2, 1, 1], f_0, \seq \\
 & & \qquad \syncon{"("} \\
 & & \qquad \syncon{"seq"} \\
 & & \qquad \acc~0 \\
 & & \qquad [2, *, 1] \\
 & & \qquad \syncon{")"}) \\
-& = & \syncon{coreseq} :> \\
+& = & \syncon{coreseq} \tagged \\
 & & \quad \seq \\
 & & \qquad \syncon{"("} \\
 & & \qquad \syncon{"seq"} \\
 & & \qquad \expand(i, [2, 1, 1], f_0, \acc~0) \\
 & & \qquad \expand(i, [2, 1, 1], f_0, [2, *, 1]) \\
 & & \qquad \syncon{")"} \\
-& = & \syncon{coreseq} :> \\
+& = & \syncon{coreseq} \tagged \\
 & & \quad \seq \\
 & & \qquad \syncon{"("} \\
 & & \qquad \syncon{"seq"} \\
 & & \qquad f_0 \\
-& & \qquad (\syncon{def} :> \ldots) \text{ since} \\
+& & \qquad (\syncon{def} \tagged \ldots) \text{ since} \\
 & & \qquad \quad \follow(\specialize([2, *, 1], [2, 1, 1]), i) \\
 & & \qquad \qquad = \follow([2, 1, 1], i) \\
-& & \qquad \qquad = (\syncon{def} :> \ldots) \\
+& & \qquad \qquad = (\syncon{def} \tagged \ldots) \\
 & & \qquad \syncon{")"} \\
 & = & f_1 \\
 \end{array}
@@ -1837,22 +1870,22 @@ The second call, with the identical steps omitted, then follows:
 
 $$
 \begin{array}{rcl}
-f'~[2, 2, 1]~f_1 & = & \syncon{coreseq} :> \\
+f'~[2, 2, 1]~f_1 & = & \syncon{coreseq} \tagged \\
 & & \quad \seq \\
 & & \qquad \syncon{"("} \\
 & & \qquad \syncon{"seq"} \\
 & & \qquad \expand(i, [2, 1, 1], f_1, \acc~0) \\
 & & \qquad \expand(i, [2, 1, 1], f_1, [2, *, 1]) \\
 & & \qquad \syncon{")"} \\
-& = & \syncon{coreseq} :> \\
+& = & \syncon{coreseq} \tagged \\
 & & \quad \seq \\
 & & \qquad \syncon{"("} \\
 & & \qquad \syncon{"seq"} \\
 & & \qquad f_1 \\
-& & \qquad (\syncon{sum} :> \ldots) \text{ since} \\
+& & \qquad (\syncon{sum} \tagged \ldots) \text{ since} \\
 & & \qquad \quad \follow(\specialize([2, *, 1], [2, 2, 1]), i) \\
 & & \qquad \qquad = \follow([2, 2, 1], i) \\
-& & \qquad \qquad = (\syncon{sum} :> \ldots) \\
+& & \qquad \qquad = (\syncon{sum} \tagged \ldots) \\
 & & \qquad \syncon{")"} \\
 \end{array}
 $$
@@ -1876,12 +1909,12 @@ where $p_e$, $p_b$, and $p_a$ are unique identifiers with unique symbols. Additi
 
 The idea here is that no actual instance will have greater requirements on its surroundings than a placeholder node, thus if expanding an instance where all children are placeholders introduces no errors, then expanding the same instance but with actual instances should also not introduce errors.
 
-More concretely, given a syntax construction instance $c :> i$ where all identifiers have different symbols and all child instances are in fact placeholders, and its expansion $e = \expand(i, [], \epsilon, e_c)$, then an error might be introduced if one of the following is true:
+More concretely, given a syntax construction instance $c \tagged i$ where all identifiers have different symbols and all child instances are in fact placeholders, and its expansion $e = \expand(i, [], \epsilon, e_c)$, then an error might be introduced if one of the following is true:
 
 \begin{enumerate}
-  \item There is a placeholder $p'$ somewhere in $e$, copied from a placeholder $p$ in $c :> i$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
-  \item $E_b(e) \setminus E_b(c :> i) \neq \emptyset$ or $E_a(e) \setminus E_a(c :> i) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
-  \item Any symbol in an identifier in a referencing position in $e$ that is unbound is \emph{bound} in an identifier in a referencing position in $c :> i$.
+  \item There is a placeholder $p'$ somewhere in $e$, copied from a placeholder $p$ in $c \tagged i$, such that $\gamma_p \setminus \gamma_{p'} \neq \emptyset$ (i.e. $p$ might reference a symbol before expansion that $p'$ cannot afterwards).
+  \item $E_b(e) \setminus E_b(c \tagged i) \neq \emptyset$ or $E_a(e) \setminus E_a(c \tagged i) \neq \emptyset$ (i.e. the instance might export something before expansion, but not after).
+  \item Any symbol in an identifier in a referencing position in $e$ that is unbound is \emph{bound} in an identifier in a referencing position in $c \tagged i$.
 \end{enumerate}
 
 The third point warrants further elaboration. The checking procedure examines an instance in isolation, i.e. it is not a subtree of some syntax tree. This means that any identifier that appears in a referencing position is unbound, which is an error. However, if the same instance appeared in a syntax tree and that tree had no binding errors, then all those identifiers must be bound in that context. Replacing the instance with its expansion and placing it in the same context then satisfies the same references in the expansion. A new unbound error with a new symbol would not have this guarantee and might thus introduce an error where there were none before.
@@ -3058,13 +3091,25 @@ No binding errors can be encountered during expansion of syntax construction, no
 
 \section{Conclusion}
 
-This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages. From a subjective point of view, the experience of using syntax constructions to define languages was pleasant when things were working, and the error messages were informative when they did not, but fixing the problems was frequently painful.
+This thesis has presented a first attempt at a method for defining programming languages through individual features, allowing reuse and composition of much smaller parts than entire languages.
 
-Ambiguity control in particular was insufficient, the controls available for the purpose had unintended side-effects (precedence in function calls in Lua, see p.~\pageref{sec:lua-func-call-precedence}) or could not solve the issue at all, requiring large amounts of duplication (lists in OCaml, see p.~\pageref{sec:ambiguous-lists}).
+Evaluating based on the design goals stated after the initial problem statement (see Section~\ref{sec:research-question}) we find the following:
 
-However, specifying binding semantics worked well, with the exception of requiring us to deal with a case we would rather forbid (function argument patterns in OCaml, see p.~\pageref{sec:ocaml-function-argument-patterns}).
+\begin{description}
+  \item[Tower of languages:] A syntax construction defines its implementation in terms of some other language, using the syntax of that language. However, the inability to treat subexpressions in a non-atomic way somewhat limit their expressive power compared to the macros commonly found in Lisp dialects.
 
-Syntax constructions do not fully meet the goals initially presented, but they do provide a reasonable first step.
+  \item[Syntactical freedom:] A language can express essentially any context free grammar, thus the syntactical freedom is far greater than for example Lisp or C. However, the fixed tokenization precludes customization of for example comments or identifiers, and the rewrites required to avoid undesired ambiguity are sometimes significant.
+
+  \item[Abstraction preservation:] The expansion checker has not allowed any abstraction breaking expansions in practice, and the justification presented in the formalization appears sound.
+
+  \item[Good error messages:] The error messages presented are informative and specific, though more engineering work is required to make them truly palatable.
+
+  \item[Composition through cherry-picking:] Though technically doable, certain common situations make the resulting language ambiguous, requiring creating a new syntax construction simply to wrap the imported one. This boilerplate seems undesirable, but a better solution is left for future work.
+
+  \item[Reasoning without context:] The \syncon{#precedence} declaration present in some syntax constructions present an implicit dependency on all other syntax constructions with a declared precedence. Additionally, the rewrites mentioned earlier require changing or creating several syntax constructions in tandem, i.e., they must be considered in their context. A majority of the syntax constructions defined could however be considered without context.
+\end{description}
+
+Syntax constructions thus do not fully meet the goals initially presented, but they do provide a reasonable first step.
 
 \printbibliography[heading=bibintoc]
 
